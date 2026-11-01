@@ -1,0 +1,3137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Excess Quantity Analysis &amp; Request Management</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+  :root{
+    --bg: #EEF0F2;
+    --surface: #FFFFFF;
+    --border: #DBE0E5;
+    --ink: #1B2430;
+    --ink-soft: #5B6472;
+    --ink-faint: #8892A0;
+    --accent: #B8752E;
+    --accent-dark: #96601F;
+    --accent-soft: #F5E7D4;
+    --teal: #2F6F6B;
+    --teal-soft: #DCEEEC;
+    --danger: #B3413B;
+    --danger-soft: #F7E2E0;
+    --success: #2F7D5A;
+    --success-soft: #DEEEE4;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{min-height:100vh; display:flex; flex-direction:column;}
+
+  /* ---------- animation keyframes ---------- */
+  @keyframes pageFadeIn{ from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:none;} }
+  @keyframes popIn{ from{opacity:0; transform:scale(.92);} to{opacity:1; transform:scale(1);} }
+  @keyframes slideDown{ from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:none;} }
+  @keyframes cardIn{ from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:none;} }
+  @keyframes rowIn{ from{opacity:0;} to{opacity:1;} }
+  @keyframes spin{ to{transform:rotate(360deg);} }
+  @keyframes pulseRing{
+    0%{box-shadow:0 0 0 0 rgba(184,117,46,.35);}
+    100%{box-shadow:0 0 0 10px rgba(184,117,46,0);}
+  }
+  @keyframes checkPop{
+    0%{transform:scale(0); opacity:0;}
+    60%{transform:scale(1.15); opacity:1;}
+    100%{transform:scale(1);}
+  }
+  .page-fade{animation:pageFadeIn .38s cubic-bezier(.2,.8,.3,1);}
+  .anim-card{animation:cardIn .42s cubic-bezier(.2,.8,.3,1) both;}
+  .anim-row{animation:rowIn .3s ease both;}
+  .anim-pop{animation:popIn .3s cubic-bezier(.3,1.2,.4,1) both;}
+
+  *{scroll-behavior:smooth;}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    background:var(--surface);
+    border-bottom:1px solid var(--border);
+    padding:18px 28px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:14px;
+  }
+  .brand{display:flex; align-items:baseline; gap:10px;}
+  .brand-mark{
+    width:30px; height:30px; border-radius:7px;
+    background:linear-gradient(155deg, var(--accent) 0%, var(--accent-dark) 100%);
+    display:flex; align-items:center; justify-content:center;
+    color:#fff; font-family:var(--font-mono); font-weight:600; font-size:14px;
+    flex-shrink:0;
+  }
+  .brand-name{font-size:17px; font-weight:650; letter-spacing:-0.01em;}
+  .brand-sub{font-size:12.5px; color:var(--ink-faint);}
+
+  .stepper{display:flex; align-items:center; gap:0; flex-wrap:wrap;}
+  .step{display:flex; align-items:center; gap:9px; padding:6px 12px; border-radius:20px; transition:background .2s ease;}
+  .step-num{
+    width:22px; height:22px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:700; font-family:var(--font-mono);
+    background:var(--border); color:var(--ink-faint);
+    flex-shrink:0; transition:background .2s ease, color .2s ease;
+  }
+  .step-label{font-size:12.5px; color:var(--ink-faint); font-weight:500; white-space:nowrap;}
+  .step.is-active .step-num{background:var(--accent); color:#fff; animation:pulseRing 1.6s ease-out 1;}
+  .step.is-active .step-label{color:var(--ink); font-weight:650;}
+  .step.is-done .step-num{background:var(--success); color:#fff;}
+  .step.is-done .step-label{color:var(--ink-soft);}
+  .step-connector{width:20px; height:1px; background:var(--border); margin:0 2px;}
+
+  /* ---------- Dataset info strip ---------- */
+  .dataset-bar{
+    background:var(--teal-soft);
+    border-bottom:1px solid #BFE0DC;
+    padding:9px 28px;
+    display:flex; align-items:center; justify-content:center; gap:22px;
+    flex-wrap:wrap;
+    font-size:12.5px;
+    animation:slideDown .3s ease;
+  }
+  .dataset-bar .ds-item{display:flex; align-items:center; gap:6px; color:#1F5551;}
+  .dataset-bar .ds-item b{font-family:var(--font-mono); font-weight:650; color:var(--ink);}
+  .dataset-bar .ds-change{
+    background:none; border:none; color:var(--teal); font-weight:650; cursor:pointer;
+    font-size:12.5px; text-decoration:underline; padding:0;
+  }
+  .dataset-bar .ds-change:hover{color:var(--accent-dark);}
+
+  main{flex:1; display:flex; flex-direction:column;}
+
+  /* ---------- Page 1 : upload ---------- */
+  .center-stage{flex:1; display:flex; align-items:center; justify-content:center; padding:40px 20px;}
+  .upload-card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius-md);
+    width:100%; max-width:520px;
+    padding:38px 36px 32px;
+    text-align:center;
+  }
+  .upload-card h1{font-size:21px; margin:0 0 6px; letter-spacing:-0.01em;}
+  .upload-card p.lede{color:var(--ink-soft); font-size:14px; margin:0 0 26px; line-height:1.5;}
+  .dropzone{
+    border:1.5px dashed var(--border);
+    border-radius:var(--radius-md);
+    padding:34px 20px;
+    cursor:pointer;
+    transition:border-color .18s ease, background .18s ease, transform .18s ease;
+    background:#FBFBFA;
+  }
+  .dropzone:hover{transform:translateY(-2px);}
+  .dropzone:hover, .dropzone.is-drag{border-color:var(--accent); background:var(--accent-soft);}
+  .dropzone.is-drag{transform:scale(1.01);}
+  .dropzone svg{margin-bottom:10px; transition:transform .18s ease;}
+  .dropzone:hover svg{transform:translateY(-3px);}
+  .dropzone .dz-title{font-size:14.5px; font-weight:600; margin-bottom:3px;}
+  .dropzone .dz-sub{font-size:12.5px; color:var(--ink-faint);}
+  .file-chip{
+    margin-top:16px; display:none;
+    align-items:center; justify-content:space-between; gap:10px;
+    background:var(--teal-soft); border:1px solid #BFE0DC;
+    border-radius:var(--radius-sm); padding:9px 13px;
+    font-size:13px; text-align:left;
+  }
+  .file-chip.is-visible{display:flex; animation:popIn .25s ease;}
+  .file-chip-name{font-family:var(--font-mono); font-size:12.5px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .file-chip-remove{cursor:pointer; color:var(--ink-faint); font-size:15px; background:none; border:none; padding:0 2px; line-height:1;}
+  .file-chip-remove:hover{color:var(--danger);}
+
+  .btn-row{display:flex; gap:10px; margin-top:20px;}
+  .btn{
+    font-family:var(--font-sans);
+    font-size:13.5px; font-weight:600;
+    padding:10px 18px;
+    border-radius:var(--radius-sm);
+    border:1px solid transparent;
+    cursor:pointer;
+    transition:opacity .12s ease, transform .1s ease, background .15s ease, box-shadow .15s ease;
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  }
+  .btn:active:not(:disabled){transform:translateY(1px) scale(.98);}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+  .btn-primary{background:var(--accent); color:#fff; flex:1;}
+  .btn-primary:not(:disabled):hover{background:var(--accent-dark); box-shadow:0 4px 14px rgba(184,117,46,.3); transform:translateY(-1px);}
+  .btn-ghost{background:var(--surface); color:var(--ink-soft); border-color:var(--border);}
+  .btn-ghost:not(:disabled):hover{background:#F3F4F5; color:var(--ink);}
+  .btn-block{width:100%;}
+  .btn-lg{padding:13px 26px; font-size:14.5px;}
+  .btn-request{
+    background:linear-gradient(135deg, var(--teal) 0%, #234E4B 100%);
+    color:#fff; font-size:14.5px; padding:13px 24px;
+  }
+  .btn-request:hover{box-shadow:0 6px 18px rgba(47,111,107,.35); transform:translateY(-1px);}
+
+  .status-msg{
+    margin-top:18px; padding:11px 14px; border-radius:var(--radius-sm);
+    font-size:13px; text-align:left; display:none; align-items:flex-start; gap:9px;
+  }
+  .status-msg.is-visible{display:flex; animation:popIn .3s cubic-bezier(.3,1.2,.4,1);}
+  .status-msg.success{background:var(--success-soft); color:#1F5B3E;}
+  .status-msg.error{background:var(--danger-soft); color:#7C2C26;}
+  .status-msg.info{background:var(--teal-soft); color:#1F5551;}
+  .status-msg .msg-icon{flex-shrink:0; margin-top:1px;}
+  .status-msg .msg-detail{color:inherit; opacity:.85; font-size:12px; margin-top:2px;}
+
+  .spinner{
+    width:15px; height:15px; border-radius:50%;
+    border:2px solid rgba(255,255,255,.4); border-top-color:#fff;
+    animation:spin .7s linear infinite;
+  }
+
+  /* ---------- Shared page shell ---------- */
+  .page-shell{flex:1; padding:34px 28px 60px; display:flex; justify-content:center;}
+  .page-inner{width:100%; max-width:1080px;}
+  .page-inner.wide{max-width:1260px;}
+  .page-head{margin-bottom:22px;}
+  .page-head h2{font-size:19px; margin:0 0 4px; letter-spacing:-0.01em;}
+  .page-head p{margin:0; font-size:13.5px; color:var(--ink-soft);}
+
+  .panel{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius-md); padding:24px;
+  }
+
+  /* ---------- Page 2: filters ---------- */
+  .filter-groups{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  @media (max-width:720px){.filter-groups{grid-template-columns:1fr;}}
+  .filter-group h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin:0 0 12px; font-weight:650;}
+  .option-row{
+    display:flex; align-items:center; gap:11px;
+    padding:11px 13px; border:1px solid var(--border); border-radius:var(--radius-sm);
+    margin-bottom:9px; cursor:pointer; transition:border-color .15s ease, background .15s ease, transform .1s ease;
+  }
+  .option-row:hover{border-color:var(--accent); transform:translateX(2px);}
+  .option-row.is-checked{border-color:var(--accent); background:var(--accent-soft);}
+  .option-row input{width:16px; height:16px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;}
+  .option-row .opt-label{font-size:14px; font-weight:550; flex:1;}
+  .option-row .opt-count{font-family:var(--font-mono); font-size:11.5px; color:var(--ink-faint);}
+  .empty-note{font-size:13px; color:var(--ink-faint); font-style:italic; padding:8px 0;}
+
+  .selected-summary{
+    margin-top:22px; padding-top:18px; border-top:1px solid var(--border);
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px;
+  }
+  .selected-summary .ss-label{font-size:12.5px; color:var(--ink-faint); margin-right:4px;}
+  .chip{
+    background:var(--ink); color:#fff; font-size:12.5px; font-weight:550;
+    padding:5px 11px; border-radius:20px; display:inline-flex; align-items:center; gap:6px;
+    animation:popIn .2s ease;
+  }
+  .chip.chip-muted{background:#EEF0F2; color:var(--ink-soft); border:1px dashed var(--border);}
+
+  .page-actions{display:flex; justify-content:space-between; align-items:center; margin-top:24px;}
+
+  /* ---------- Page 3: three multi-select fields ---------- */
+  .ms-fields-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:18px;}
+  @media (max-width:980px){.ms-fields-grid{grid-template-columns:1fr;}}
+  .ms-field h3{font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin:0 0 10px; font-weight:650;}
+  .ms-wrap{position:relative;}
+  .ms-input{
+    display:flex; align-items:center; gap:9px;
+    border:1px solid var(--border); border-radius:var(--radius-sm);
+    padding:11px 14px; background:var(--surface); cursor:text; transition:border-color .15s ease;
+  }
+  .ms-input:focus-within{border-color:var(--accent);}
+  .ms-input input{border:none; outline:none; font-size:13.5px; flex:1; font-family:var(--font-sans); background:transparent; min-width:0;}
+  .ms-badge{font-family:var(--font-mono); font-size:11px; background:var(--accent-soft); color:var(--accent-dark); padding:3px 8px; border-radius:12px; flex-shrink:0;}
+  .ms-panel{
+    position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:20;
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+    max-height:280px; overflow-y:auto; box-shadow:0 10px 28px rgba(20,24,30,.12);
+    display:none;
+  }
+  .ms-panel.is-open{display:block; animation:slideDown .16s ease;}
+  .ms-option{display:flex; align-items:center; gap:10px; padding:9px 14px; cursor:pointer; font-size:13px;}
+  .ms-option:hover{background:#F5F6F7;}
+  .ms-option input{width:15px; height:15px; accent-color:var(--accent); cursor:pointer; flex-shrink:0;}
+  .ms-empty{padding:16px 14px; font-size:12.5px; color:var(--ink-faint); text-align:center;}
+  .ms-actions-row{display:flex; gap:14px; padding:8px 14px; border-bottom:1px solid var(--border); font-size:11.5px;}
+  .ms-actions-row a{color:var(--accent-dark); font-weight:600; cursor:pointer; text-decoration:none;}
+  .ms-selected-list{margin-top:14px; display:flex; flex-wrap:wrap; gap:7px;}
+  .ms-chip{
+    display:flex; align-items:center; gap:6px;
+    background:#F3F4F5; border:1px solid var(--border); border-radius:16px;
+    padding:4px 5px 4px 11px; font-size:12px; max-width:100%;
+    animation:popIn .18s ease;
+  }
+  .ms-chip span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .ms-chip button{
+    border:none; background:var(--border); color:var(--ink-soft); width:16px; height:16px;
+    border-radius:50%; cursor:pointer; font-size:11px; line-height:1; flex-shrink:0;
+  }
+  .ms-chip button:hover{background:var(--danger); color:#fff;}
+  .ms-count-line{font-size:12px; color:var(--ink-faint); margin-top:12px;}
+
+  /* ---------- Dashboard ---------- */
+  .kpi-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px;}
+  @media (max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr);}}
+  @media (max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+  .kpi-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:16px 17px; border-top:3px solid var(--accent); transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .kpi-card:hover{transform:translateY(-2px); box-shadow:0 8px 20px rgba(20,24,30,.06);}
+  .kpi-card.teal{border-top-color:var(--teal);}
+  .kpi-card .kpi-label{font-size:11.5px; color:var(--ink-faint); font-weight:600; margin-bottom:8px;}
+  .kpi-card .kpi-value{font-family:var(--font-mono); font-size:21px; font-weight:650; letter-spacing:-0.01em;}
+  .kpi-card .kpi-sub{font-size:11px; color:var(--ink-faint); margin-top:5px;}
+
+  .dash-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-bottom:18px;}
+  @media (max-width:960px){.dash-grid{grid-template-columns:1fr;}}
+  .panel-title{font-size:14px; font-weight:650; margin:0 0 16px;}
+
+  .table-scroll{max-height:360px; overflow-y:auto; border-radius:var(--radius-sm);}
+  table.summary-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  table.summary-table thead th{
+    position:sticky; top:0; z-index:5;
+    text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em;
+    color:var(--ink-faint); font-weight:650; padding:11px 10px; border-bottom:1px solid var(--border);
+    background:var(--surface);
+    box-shadow:0 2px 6px rgba(20,24,30,.05);
+  }
+  table.summary-table thead th.num, table.summary-table td.num{text-align:right;}
+  table.summary-table tbody td{padding:10px; border-bottom:1px solid #F0F1F2; font-family:var(--font-mono); font-size:13px;}
+  table.summary-table tbody td.color-cell{font-family:var(--font-sans); font-weight:550; display:flex; align-items:center; gap:9px;}
+  .color-dot{width:11px; height:11px; border-radius:3px; border:1px solid rgba(0,0,0,.12); flex-shrink:0;}
+  table.summary-table tbody tr{transition:background .12s ease;}
+  table.summary-table tbody tr:hover{background:#FAFAF9;}
+  table.summary-table tfoot td{
+    padding:11px 10px; font-family:var(--font-mono); font-weight:700; border-top:1.5px solid var(--ink);
+    font-size:13px; position:sticky; bottom:0; background:var(--surface);
+  }
+
+  .chart-box{position:relative; height:215px;}
+  .fb-row{display:flex; align-items:center; gap:10px; padding:6px 0; font-size:12.5px;}
+  .fb-label{width:110px; flex-shrink:0; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .fb-track{flex:1; background:#F0F1F2; border-radius:4px; height:16px; overflow:hidden;}
+  .fb-bar{height:100%; border-radius:4px;}
+  .fb-val{font-family:var(--font-mono); width:96px; text-align:right;}
+  .filters-recap{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px;}
+  .recap-chip{font-size:12px; background:#F3F4F5; border:1px solid var(--border); color:var(--ink-soft); padding:5px 11px; border-radius:14px;}
+  .recap-chip b{color:var(--ink); font-weight:650;}
+
+  .top-actions{display:flex; justify-content:space-between; align-items:center; margin-top:26px; flex-wrap:wrap; gap:12px;}
+  .link-btn{background:none; border:none; color:var(--ink-soft); font-size:13.5px; font-weight:600; cursor:pointer; padding:9px 4px; display:inline-flex; align-items:center; gap:6px; transition:color .15s ease;}
+  .link-btn:hover{color:var(--ink);}
+
+  .request-cta-panel{
+    display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+    background:linear-gradient(135deg, #F4FAF9 0%, #EAF4F2 100%);
+    border:1px solid #BFE0DC; border-radius:var(--radius-md); padding:20px 24px; margin-top:6px;
+  }
+  .request-cta-panel .rc-text h4{margin:0 0 3px; font-size:15px;}
+  .request-cta-panel .rc-text p{margin:0; font-size:12.5px; color:var(--ink-soft);}
+
+  /* ---------- Page 5: Excess Request ---------- */
+  .req-grid{display:grid; grid-template-columns:1fr 380px; gap:20px; align-items:start;}
+  @media (max-width:920px){.req-grid{grid-template-columns:1fr;}}
+  .review-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  .review-table td{padding:9px 4px; border-bottom:1px solid #F0F1F2;}
+  .review-table td:first-child{color:var(--ink-faint); width:44%; font-size:12.5px;}
+  .review-table td:last-child{font-weight:600; font-family:var(--font-mono); font-size:13px; text-align:right;}
+
+  .field-block{margin-bottom:18px;}
+  .field-block label{display:block; font-size:12.5px; font-weight:650; color:var(--ink-soft); margin-bottom:7px;}
+  .avail-line{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12.5px; color:var(--ink-soft);}
+  .avail-line b{font-family:var(--font-mono); color:var(--ink); font-size:13.5px;}
+  .qty-input-row{display:flex; align-items:center; gap:10px;}
+  .qty-input{
+    flex:1; padding:11px 13px; border:1px solid var(--border); border-radius:var(--radius-sm);
+    font-family:var(--font-mono); font-size:15px; transition:border-color .15s ease;
+  }
+  .qty-input:focus{outline:none; border-color:var(--accent);}
+  .qty-input.has-error{border-color:var(--danger);}
+  .field-error{color:var(--danger); font-size:12px; margin-top:7px; display:none; align-items:center; gap:5px;}
+  .field-error.is-visible{display:flex; animation:popIn .2s ease;}
+
+  .req-summary-panel{background:#FAFAF9; border:1px solid var(--border); border-radius:var(--radius-sm); padding:16px 17px; margin-top:4px;}
+  .req-summary-panel h4{margin:0 0 10px; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint);}
+  .rs-row{display:flex; justify-content:space-between; font-size:13px; padding:6px 0; border-bottom:1px dashed #E4E6E9;}
+  .rs-row:last-child{border-bottom:none;}
+  .rs-row span:first-child{color:var(--ink-soft);}
+  .rs-row span:last-child{font-weight:600; font-family:var(--font-mono); text-align:right; max-width:60%;}
+
+  .success-panel{
+    text-align:center; padding:52px 30px; max-width:460px; margin:0 auto;
+  }
+  .success-check{
+    width:64px; height:64px; border-radius:50%; background:var(--success-soft);
+    display:flex; align-items:center; justify-content:center; margin:0 auto 20px;
+    animation:checkPop .45s cubic-bezier(.3,1.4,.4,1);
+  }
+  .success-panel h2{font-size:19px; margin:0 0 8px;}
+  .success-panel p{color:var(--ink-soft); font-size:13.5px; margin:0 0 26px; line-height:1.5;}
+
+
+  .req-color-table, .sum-lines-table{width:100%; border-collapse:collapse; font-size:13px;}
+  .req-color-table thead th, .sum-lines-table thead th{
+    position:sticky; top:0; z-index:3; background:var(--surface); text-align:left; font-size:11px;
+    text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); padding:9px 8px; border-bottom:1px solid var(--border);
+  }
+  .req-color-table th.num, .req-color-table td.num, .sum-lines-table th.num, .sum-lines-table td.num{text-align:right;}
+  .req-color-table tbody td{padding:9px 8px; border-bottom:1px solid #F0F1F2; vertical-align:top;}
+  .req-color-table tbody tr.is-selected{background:var(--accent-soft);}
+  .req-color-table .rc-color{font-weight:650;}
+  .req-color-table .rc-text{font-family:var(--font-mono); font-size:12px; color:var(--ink-soft);}
+  .req-color-table .rc-qty{width:100%; padding:7px 9px; font-size:13px;}
+  .req-color-table input[type="checkbox"]{width:16px; height:16px; accent-color:var(--accent); cursor:pointer;}
+  .sum-lines-table{margin-top:14px;}
+  .sum-lines-table tbody td{padding:8px; border-bottom:1px dashed #E4E6E9; font-family:var(--font-mono); font-size:12.5px;}
+  .sum-lines-table tbody td:first-child{font-family:var(--font-sans); font-weight:650;}
+  .sum-lines-table tfoot td{padding:9px 8px 0; font-weight:700; font-family:var(--font-mono); font-size:12.5px; border-top:1.5px solid var(--ink);}
+  @media (max-width:1000px){ .req-grid{grid-template-columns:1fr !important;} }
+
+
+  .folder-panel{border:1px solid var(--border); border-radius:var(--radius-md); padding:16px 18px; background:#FAFAF9; text-align:left; margin-bottom:18px;}
+  .folder-panel .fp-title{font-size:13.5px; font-weight:650;}
+  .folder-panel .fp-sub{font-size:12.5px; color:var(--ink-soft); margin-top:4px; line-height:1.5;}
+  .folder-panel .fp-pathbox{margin-top:14px;}
+  .folder-panel .fp-pathbox label{font-size:12px; font-weight:650; color:var(--ink-soft);}
+  .folder-panel .fp-pathbox input{flex:1; min-width:0; padding:9px 11px; border:1px solid var(--border); border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:11.5px; background:#fff;}
+  .folder-panel .fp-pathbox input:focus{outline:none; border-color:var(--accent);}
+  .folder-panel .fp-path{font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); word-break:break-all; margin-top:12px;}
+
+
+  .dash-chip{display:inline-block; background:var(--accent-soft); color:var(--accent-dark); font-size:12px; font-weight:650; padding:4px 10px; border-radius:12px;}
+  .btn-danger{background:#fff; color:var(--danger); border-color:#E7C3C0;} .btn-danger:hover{background:var(--danger-soft);}
+  .btn-ok{background:var(--success); color:#fff;} .btn-ok:not(:disabled):hover{background:#256548;}
+  .btn-sm{padding:6px 12px; font-size:12.5px; flex:0 0 auto;}
+  .admin-who{font-size:12.5px; color:var(--ink-soft); display:flex; align-items:center; gap:10px;}
+  .am-tabs{display:flex; gap:6px; border-bottom:1px solid var(--border); margin-bottom:22px; flex-wrap:wrap;}
+  .am-tab{background:none; border:none; padding:10px 16px; font:650 13.5px var(--font-sans); color:var(--ink-faint); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s;}
+  .am-tab:hover{color:var(--ink);} .am-tab.on{color:var(--ink); border-bottom-color:var(--accent);}
+  .am-count{background:var(--accent); color:#fff; font:650 11px var(--font-mono); padding:1px 7px; border-radius:10px; margin-left:6px;}
+  .am-seg{display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;}
+  .am-seg button{background:#fff; border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:10px 18px; font:650 13.5px var(--font-sans); color:var(--ink-soft); cursor:pointer; transition:all .15s;}
+  .am-seg button:hover{border-color:var(--accent); color:var(--ink);} .am-seg button.on{background:var(--ink); border-color:var(--ink); color:#fff;}
+  .am-dot{display:inline-block; width:8px; height:8px; background:var(--accent); border-radius:50%; margin-left:7px;}
+  .am-addrow{display:flex; gap:10px; margin-bottom:6px;}
+  .am-addrow input{flex:1; min-width:0; padding:11px 13px; border:1px solid var(--border); border-radius:var(--radius-sm); font:14px var(--font-sans);}
+  .am-addrow input:focus{outline:none; border-color:var(--accent);}
+  .am-table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  .am-table th{text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); padding:0 10px 10px; border-bottom:1px solid var(--border);}
+  .am-table td{padding:10px; border-bottom:1px solid #F0F1F2; vertical-align:middle;}
+  .am-table td.mono{font-family:var(--font-mono); font-size:13px;} .am-table td.r,.am-table th.r{text-align:right;}
+  .am-table tbody tr:hover{background:#FAFAF9;}
+  .am-tag{font-size:11px; font-weight:650; padding:2px 8px; border-radius:10px;}
+  .am-tag.saved{background:var(--success-soft); color:#1F5B3E;} .am-tag.new{background:var(--accent-soft); color:var(--accent-dark);}
+  .am-empty{padding:22px; text-align:center; color:var(--ink-faint); font-size:13px; font-style:italic;}
+  .am-savebar{display:flex; align-items:center; gap:12px; margin-top:18px; flex-wrap:wrap;}
+  .am-savebar .sum{font-size:12.5px; color:var(--ink-soft); flex:1; min-width:160px;}
+  .am-note{font-size:12px; color:var(--ink-soft); background:#FAFAF9; border:1px dashed var(--border); border-radius:var(--radius-sm); padding:10px 12px; margin-bottom:18px; line-height:1.55;}
+  .am-reportbox{display:flex; justify-content:space-between; align-items:center; gap:12px; background:var(--teal-soft); border:1px solid #BFE0DC; border-radius:var(--radius-sm); padding:12px 14px; margin-top:18px; font-size:13px;}
+  .am-reportbox .meta{color:#1F5551; font-size:12px; margin-top:2px;}
+
+  .hidden{display:none !important;}
+  ::-webkit-scrollbar{width:9px; height:9px;}
+  ::-webkit-scrollbar-thumb{background:#D2D6DB; border-radius:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+
+  /* ---------- App shell / sidebar ---------- */
+  .app-body{flex:1; display:flex; min-height:0;}
+  #sidebar{
+    width:222px; flex-shrink:0; background:#161D26; color:#E7E9EC;
+    padding:22px 16px; display:flex; flex-direction:column; gap:4px;
+  }
+  #sidebar .sb-title{font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#7C8794; font-weight:650; margin:6px 10px 10px;}
+  .sb-link{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:8px;
+    color:#C9CFD6; font-size:13.5px; font-weight:550; cursor:pointer; border:none; background:none;
+    text-align:left; width:100%; transition:background .15s ease, color .15s ease;
+  }
+  .sb-link:hover{background:#232C38; color:#fff;}
+  .sb-link.is-active{background:var(--accent); color:#fff;}
+  .sb-spacer{flex:1;}
+  .sb-user{padding:12px 10px; border-top:1px solid #2A3340; margin-top:8px;}
+  .sb-user .sb-email{font-size:12px; color:#C9CFD6; word-break:break-all;}
+  .sb-user .sb-role{font-size:10.5px; color:#7C8794; text-transform:uppercase; letter-spacing:.04em; margin-top:2px;}
+  .sb-signout{margin-top:10px; width:100%; background:#232C38; color:#E7E9EC; border:none; border-radius:8px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer;}
+  .sb-signout:hover{background:#2E3948;}
+
+  /* ---------- Dashboard Selection ---------- */
+  .select-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px; max-width:900px; margin:0 auto;}
+  @media (max-width:720px){.select-grid{grid-template-columns:1fr;}}
+  .select-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-md);
+    padding:30px 26px; cursor:pointer; text-align:left; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  .select-card:hover{transform:translateY(-3px); box-shadow:0 14px 32px rgba(20,24,30,.1); border-color:var(--accent);}
+  .select-card .sc-icon{
+    width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    background:var(--accent-soft); color:var(--accent-dark); margin-bottom:16px;
+  }
+  .select-card.teal-icon .sc-icon{background:var(--teal-soft); color:var(--teal);}
+  .select-card h3{font-size:16.5px; margin:0 0 8px;}
+  .select-card p{font-size:13px; color:var(--ink-soft); margin:0 0 16px; line-height:1.5;}
+  .select-card .sc-cta{font-size:13px; font-weight:650; color:var(--accent-dark); display:inline-flex; align-items:center; gap:5px;}
+
+  /* ---------- Dashboard 1: Overview ---------- */
+  .overview-toggle{display:flex; gap:10px; margin-bottom:22px; flex-wrap:wrap;}
+  .toggle-btn{
+    background:var(--surface); border:1.5px solid var(--border); border-radius:var(--radius-sm);
+    padding:12px 26px; font-size:14px; font-weight:650; color:var(--ink-soft); cursor:pointer;
+    transition:all .15s ease;
+  }
+  .toggle-btn:hover{border-color:var(--accent); color:var(--ink);}
+  .toggle-btn.is-active{background:var(--ink); border-color:var(--ink); color:#fff;}
+
+  .overview-search-bar{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px;}
+  @media (max-width:1000px){.overview-search-bar{grid-template-columns:repeat(2,1fr);}}
+  .ov-ms h3{font-size:11.5px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); margin:0 0 6px; font-weight:650;}
+  .ov-ms .ms-input{padding:9px 11px;}
+  .ov-ms .ms-count-line{display:none;}
+  .ov-ms .ms-selected-list{margin-top:8px; max-height:58px; overflow-y:auto;}
+  .ov-ms .ms-option span{word-break:break-all;}
+
+  table.overview-table{width:100%; border-collapse:collapse; font-size:13px;}
+  table.overview-table thead th{
+    position:sticky; top:0; z-index:5; text-align:left; font-size:11px; text-transform:uppercase;
+    letter-spacing:.03em; color:var(--ink-faint); font-weight:650; padding:10px; border-bottom:1px solid var(--border);
+    background:var(--surface); box-shadow:0 2px 6px rgba(20,24,30,.05);
+  }
+  table.overview-table thead th.num{text-align:right;}
+  table.overview-table tbody td{padding:9px 10px; border-bottom:1px solid #F0F1F2; font-family:var(--font-mono); font-size:12.5px;}
+  table.overview-table tbody td.num{text-align:right;}
+  table.overview-table tbody tr:hover{background:#FAFAF9;}
+
+  .admin-panel{
+    background:#FAFAF9; border:1px dashed var(--border); border-radius:var(--radius-md);
+    padding:18px 20px; margin-top:22px;
+  }
+  .admin-panel h4{margin:0 0 4px; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint);}
+  .admin-panel .ap-path{font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); background:#fff; border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin:8px 0 12px; word-break:break-all;}
+  .admin-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  .admin-badge{font-size:10.5px; background:var(--accent-soft); color:var(--accent-dark); padding:3px 8px; border-radius:10px; font-weight:650; text-transform:uppercase; letter-spacing:.03em;}
+
+  /* ---------- Password field (Overview login gate) ---------- */
+  .field-group{margin-bottom:14px; text-align:left;}
+  .field-group label{display:block; font-size:12.5px; font-weight:650; color:var(--ink-soft); margin-bottom:6px;}
+  .field-group input[type="text"], .field-group input[type="email"], .field-group input[type="password"]{
+    width:100%; padding:11px 13px; border:1px solid var(--border); border-radius:var(--radius-sm);
+    font-size:14px; font-family:var(--font-sans); transition:border-color .15s ease;
+  }
+  .field-group input:focus{outline:none; border-color:var(--accent);}
+  .password-row{position:relative;}
+  .password-row input{padding-right:42px;}
+  .password-toggle{
+    position:absolute; right:10px; top:50%; transform:translateY(-50%);
+    background:none; border:none; cursor:pointer; color:var(--ink-faint); font-size:12px; font-weight:650;
+    padding:4px 6px;
+  }
+  .password-toggle:hover{color:var(--ink);}
+
+  /* ---------- Excess Overview login gate: animated glass page ---------- */
+  .ov-login-stage{
+    position:relative; min-height:100vh; width:100%;
+    display:flex; align-items:center; justify-content:center;
+    padding:40px 20px; overflow:hidden;
+    background:linear-gradient(135deg, #071B3D 0%, #0E3E8C 45%, #0A2A63 100%);
+  }
+  .ov-blob{
+    position:absolute; border-radius:50%; filter:blur(60px); opacity:.6;
+    pointer-events:none; will-change:transform;
+  }
+  .ov-blob-1{ width:440px; height:440px; top:-140px; left:-120px;
+    background:radial-gradient(circle at 30% 30%, #57D9FF, transparent 70%);
+    animation:ovFloat1 17s ease-in-out infinite; }
+  .ov-blob-2{ width:380px; height:380px; bottom:-160px; right:-90px;
+    background:radial-gradient(circle at 60% 40%, #7FB8FF, transparent 70%);
+    animation:ovFloat2 21s ease-in-out infinite; }
+  .ov-blob-3{ width:280px; height:280px; top:42%; left:62%;
+    background:radial-gradient(circle at 50% 50%, #A6E8FF, transparent 70%);
+    animation:ovFloat3 15s ease-in-out infinite; }
+  .ov-blob-4{ width:220px; height:220px; top:8%; right:14%;
+    background:radial-gradient(circle at 50% 50%, #4FA6FF, transparent 70%);
+    animation:ovFloat2 12s ease-in-out infinite reverse; opacity:.4; }
+
+  @keyframes ovFloat1{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(70px,50px) scale(1.15); } }
+  @keyframes ovFloat2{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(-55px,-35px) scale(1.1); } }
+  @keyframes ovFloat3{ 0%,100%{ transform:translate(0,0) scale(1); } 50%{ transform:translate(-45px,55px) scale(1.2); } }
+
+  .ov-glass-card{
+    position:relative; z-index:2; width:100%; max-width:400px;
+    background:rgba(255,255,255,0.12);
+    border:1px solid rgba(255,255,255,0.28);
+    border-radius:20px;
+    backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+    box-shadow:0 30px 70px rgba(3,10,35,0.5);
+    padding:36px 32px;
+    color:#fff;
+    animation:popIn .4s cubic-bezier(.2,.8,.3,1);
+  }
+  .ov-glass-card .ov-logo{display:flex; align-items:center; gap:10px; justify-content:center; margin-bottom:24px;}
+  .ov-glass-card .ov-logo-mark{
+    width:32px; height:32px; border-radius:9px; flex-shrink:0;
+    background:linear-gradient(155deg,#57D9FF,#0E3E8C);
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-mono); font-weight:700; font-size:13px; color:#fff;
+  }
+  .ov-glass-card h1{font-size:19px; margin:0 0 4px; text-align:center; letter-spacing:-0.01em;}
+  .ov-glass-card .ov-sub{font-size:12.5px; color:rgba(255,255,255,.72); text-align:center; margin:0 0 26px; line-height:1.5;}
+  .ov-glass-card .field-group label{color:rgba(255,255,255,.85);}
+  .ov-glass-card .field-group input{
+    background:rgba(255,255,255,0.14); border:1px solid rgba(255,255,255,0.32); color:#fff;
+  }
+  .ov-glass-card .field-group input::placeholder{color:rgba(255,255,255,.55);}
+  .ov-glass-card .field-group input:focus{border-color:#8FE0FF; background:rgba(255,255,255,0.2);}
+  .ov-glass-card .password-toggle{color:rgba(255,255,255,.72); font-size:11px;}
+  .ov-glass-card .password-toggle:hover{color:#fff;}
+  .ov-forgot-line{text-align:right; margin:-6px 0 18px;}
+  .ov-forgot-line a{font-size:12px; color:rgba(255,255,255,.78); cursor:pointer; text-decoration:none;}
+  .ov-forgot-line a:hover{color:#fff; text-decoration:underline;}
+  .ov-glass-card .btn-primary{background:#0D2B57; box-shadow:0 6px 18px rgba(3,10,35,.35);}
+  .ov-glass-card .btn-primary:not(:disabled):hover{background:#123A70; box-shadow:0 8px 22px rgba(3,10,35,.45);}
+  .ov-footer-line{text-align:center; font-size:11.5px; color:rgba(255,255,255,.65); margin-top:20px; line-height:1.7;}
+  .ov-footer-line button{
+    color:#8FE0FF; background:none; border:none; cursor:pointer; font-weight:650; font-size:12px; padding:2px;
+  }
+  .ov-footer-line button:hover{color:#fff; text-decoration:underline;}
+
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">EQ</div>
+      <div>
+        <div class="brand-name">Brandix Excess Management System</div>
+        <div class="brand-sub" id="brandSub">Access-controlled dashboards · analytics · Outlook requests</div>
+      </div>
+    </div>
+    <div class="stepper" id="stepper"></div>
+  </div>
+
+  <div class="dataset-bar hidden" id="datasetBar">
+    <span class="ds-item">File: <b id="dsFileName">-</b></span>
+    <span class="ds-item">Rows processed: <b id="dsRowCount">-</b></span>
+    <span class="ds-item">Report updated: <b id="dsUploadedAt">-</b></span>
+    <span class="ds-item hidden" id="newFileNotice" style="font-weight:650;">New inventory file detected: <b id="newFileName">-</b> <button class="ds-change" id="newFileLoadBtn">Load it now</button></span>
+  </div>
+
+  <div class="app-body">
+
+    <aside id="sidebar" class="hidden">
+      <div class="sb-title">Brandix Excess</div>
+      <button class="sb-link" id="sbSelectBtn" data-view="select">🏠 Dashboards</button>
+      <button class="sb-link" id="sbOverviewBtn" data-view="overview">📋 Excess Overview</button>
+      <button class="sb-link" id="sbAnalysisBtn" data-view="analysis">🔎 Excess Analysis &amp; Request</button>
+      <div class="sb-spacer"></div>
+      <div class="sb-user">
+        <div class="sb-email" id="sbUserEmail">-</div>
+        <div class="sb-role" id="sbUserRole">-</div>
+      </div>
+      <button class="sb-signout" id="sbSignOutBtn">Sign Out</button>
+    </aside>
+
+    <main>
+
+    <!-- USER ID (access check) -->
+    <section id="view-userid" class="center-stage hidden">
+      <div class="upload-card" style="max-width:460px; text-align:left;">
+        <button class="link-btn" id="useridBackBtn">← Choose a different dashboard</button>
+        <div style="margin-top:12px;"><span class="dash-chip" id="useridDashChip"></span></div>
+        <h1 style="font-size:20px; margin:14px 0 6px;">Enter your Brandix User ID</h1>
+        <p class="lede" style="margin-bottom:18px;">Use your Brandix email address, for example name@brandix.com.</p>
+        <div class="field-group"><label for="userIdInput">Brandix User ID</label><input type="email" id="userIdInput" placeholder="name@brandix.com" autocomplete="username" /></div>
+        <button class="btn btn-primary btn-block" id="userContinueBtn">Continue</button>
+        <div class="status-msg" id="accStatus"></div>
+        <div id="accActions"></div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD SELECTION -->
+    <section id="view-select" class="page-shell hidden">
+      <div class="page-inner">
+        <div class="page-head" style="text-align:center;">
+          <h2 style="font-size:22px;">Welcome to the Excess Management System</h2>
+          <p>Choose a dashboard to continue.</p>
+        </div>
+        <div class="select-grid">
+          <div class="select-card anim-card" id="selectOverviewCard">
+            <div class="sc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11" stroke-linecap="round"/></svg></div>
+            <h3>Excess Overview</h3>
+            <p>View the complete available excess for PVH and Harper Wilde (Thread) — full table, totals, and charts.</p>
+            <span class="sc-cta">Open Overview →</span>
+          </div>
+          <div class="select-card teal-icon anim-card" id="selectAnalysisCard" style="animation-delay:.08s;">
+            <div class="sc-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18" stroke-linecap="round"/><path d="M7 15l4-5 3 3 5-7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <h3>Excess Analysis &amp; Request</h3>
+            <p>Filter by item, color and size, analyze the results, and submit an excess request via Outlook.</p>
+            <span class="sc-cta">Open Analysis →</span>
+          </div>
+        </div>
+        <div style="text-align:center; margin-top:34px;"><button class="link-btn" id="goAdminBtn">Admin Panel →</button></div>
+      </div>
+    </section>
+
+    <!-- ADMIN PANEL — SIGN IN -->
+    <section id="view-overview-login" class="ov-login-stage hidden">
+      <div class="ov-blob ov-blob-1"></div>
+      <div class="ov-blob ov-blob-2"></div>
+      <div class="ov-blob ov-blob-3"></div>
+      <div class="ov-blob ov-blob-4"></div>
+
+      <div class="ov-glass-card">
+        <div class="ov-logo">
+          <div class="ov-logo-mark">EQ</div>
+          <span style="font-weight:650; font-size:15px;">Brandix Excess</span>
+        </div>
+        <h1>Admin Panel</h1>
+        <p class="ov-sub">Restricted access — administrators only</p>
+
+        <div class="field-group">
+          <label>Email</label>
+          <input type="email" id="ovLoginEmail" placeholder="name@brandix.com" autocomplete="username" />
+        </div>
+        <div class="field-group">
+          <label>Password</label>
+          <div class="password-row">
+            <input type="password" id="ovLoginPassword" placeholder="Password" autocomplete="current-password" />
+            <button type="button" class="password-toggle" id="ovPasswordToggle">SHOW</button>
+          </div>
+        </div>
+        <div class="ov-forgot-line"><a id="ovForgotLink">Forgot Password?</a></div>
+
+        <div class="status-msg" id="ovLoginStatus"></div>
+
+        <button class="btn btn-primary btn-block" id="ovLoginBtn">Sign in</button>
+
+        <div class="ov-footer-line">
+          Access limited to authorized Brandix accounts.<br/>
+          <button id="ovLoginBackBtn">← Back to Dashboard Selection</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ADMIN PANEL -->
+    <section id="view-admin" class="page-shell hidden">
+      <div class="page-inner wide">
+        <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+          <div><h2>Admin Panel</h2><p>Manage dashboard access, review access requests, and upload the report that both dashboards use.</p></div>
+          <div class="admin-who">Signed in as <b id="adminEmailLabel"></b> <button class="btn btn-ghost btn-sm" id="adminSignOutBtn">Sign out</button></div>
+        </div>
+        <div class="am-tabs">
+          <button class="am-tab on" data-tab="access">Dashboard Access</button>
+          <button class="am-tab" data-tab="requests">Access Requests <span class="am-count hidden" id="accReqCount">0</span></button>
+          <button class="am-tab" data-tab="file">File Upload &amp; Data Source</button>
+        </div>
+
+        <div id="tab-access">
+          <div class="am-note"><b>Demo storage:</b> access lists are saved in this browser only. For access control shared across everyone's computers, connect these screens to a shared store (SharePoint list or Dataverse). The two administrator accounts always have access to both dashboards.</div>
+          <div class="am-seg" id="adminDashSeg"></div>
+          <div class="panel">
+            <div class="field-group" style="margin-bottom:10px;"><label for="addUserInput">Add a Brandix User ID to <span id="addUserDashName"></span></label></div>
+            <div class="am-addrow"><input type="email" id="addUserInput" placeholder="name@brandix.com" /><button class="btn btn-primary" id="addUserBtn" style="flex:0 0 auto;">Add user</button></div>
+            <div class="status-msg" id="accessMsg"></div>
+            <table class="am-table" style="margin-top:18px;"><thead><tr><th>User ID</th><th>Status</th><th class="r">Action</th></tr></thead><tbody id="accessBody"></tbody></table>
+            <div class="am-savebar"><span class="sum" id="accessSummary"></span><button class="btn btn-ghost" id="discardBtn" disabled>Discard changes</button><button class="btn btn-ok" id="saveAccessBtn" disabled>Save access permissions</button></div>
+          </div>
+        </div>
+
+        <div id="tab-requests" class="hidden">
+          <div class="panel"><table class="am-table"><thead><tr><th>User ID</th><th>Dashboard</th><th>Requested</th><th class="r">Decision</th></tr></thead><tbody id="requestBody"></tbody></table></div>
+        </div>
+
+        <div id="tab-file" class="hidden">
+          <div class="panel" style="max-width:640px;">
+            <div class="panel-title">Report file</div>
+            <p class="lede" style="margin-bottom:18px;">Only administrators can upload or change the report. Connect the OneDrive folder for daily automatic updates, or upload a CSV / Excel file manually.</p>
+        <div class="folder-panel">
+          <div class="fp-title">Auto-load from your OneDrive folder</div>
+          <div class="fp-sub" id="folderStatusLine">Not connected yet. Choose the OneDrive “Inventry report” folder once; after that the app picks the file with the latest date in its name and refreshes it automatically each day.</div>
+          <div class="btn-row" style="margin-top:12px;">
+            <button class="btn btn-ghost" id="folderChooseBtn">Choose folder</button>
+            <button class="btn btn-primary" id="folderLoadBtn" disabled>Load latest file</button>
+          </div>
+          <div class="fp-pathbox">
+            <label for="folderPathInput">OneDrive folder path <span style="font-weight:500; color:var(--ink-faint);">(the folder where the daily report is saved; edit it if yours is different)</span></label>
+            <div style="display:flex; gap:8px; margin-top:6px;">
+              <input type="text" id="folderPathInput" spellcheck="false" />
+              <button class="btn btn-ghost" id="folderCopyPathBtn" style="padding:8px 14px;">Copy path</button>
+            </div>
+            <div class="fp-sub" style="margin-top:8px;">Click <b>Choose folder</b>, click the address bar of the window that opens (Ctrl+L), paste this path, press Enter, then click <b>Select Folder</b>. This is only needed once on this computer.</div>
+          </div>
+        </div>
+
+        <div style="margin:4px 0 14px; text-align:center; color:var(--ink-faint); font-size:12px; display:flex; align-items:center; gap:10px;">
+          <span style="flex:1; height:1px; background:var(--border);"></span> or upload manually <span style="flex:1; height:1px; background:var(--border);"></span>
+        </div>
+
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" />
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8892A0" stroke-width="1.6"><path d="M12 16V4M12 4l-4 4M12 4l4 4" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="dz-title">Click to choose a CSV or Excel file</div>
+          <div class="dz-sub">or drag and drop it here &middot; .csv, .xlsx, .xls</div>
+        </div>
+
+        <div class="file-chip" id="fileChip">
+          <span class="file-chip-name" id="fileChipName"></span>
+          <button class="file-chip-remove" id="fileChipRemove" title="Remove file">&times;</button>
+        </div>
+
+        <div class="status-msg" id="uploadStatusMsg"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="clearBtn">Clear</button>
+          <button class="btn btn-primary" id="uploadBtn" disabled>Upload</button>
+        </div>
+
+
+            <div class="am-reportbox hidden" id="reportBox"><div><b id="reportName"></b><div class="meta" id="reportMeta"></div></div><button class="btn btn-danger btn-sm" id="reportRemoveBtn">Remove report</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- DASHBOARD 1 : EXCESS OVERVIEW -->
+    <section id="view-overview" class="page-shell hidden">
+      <div class="page-inner wide">
+        <div class="page-head">
+          <h2>Excess Overview</h2>
+          <p>All available excess for PVH and Harper Wilde, Procurement Group: Thread.</p>
+        </div>
+
+        <div class="overview-toggle">
+          <button class="toggle-btn is-active" data-customer="ALL">ALL</button>
+          <button class="toggle-btn" data-customer="PVH">PVH</button>
+          <button class="toggle-btn" data-customer="HARPER WILDE">HARPER WILDE</button>
+        </div>
+
+        <div class="overview-search-bar">
+          <div class="ov-ms">
+            <h3>Lot No.</h3>
+            <div class="ms-wrap" id="ovLotWrap">
+              <div class="ms-input">
+                <input type="text" id="ovLotSearch" placeholder="Search Lot No...." autocomplete="off" />
+                <span class="ms-badge" id="ovLotBadge">0 selected</span>
+              </div>
+              <div class="ms-panel" id="ovLotPanel"></div>
+            </div>
+            <div class="ms-count-line" id="ovLotCount"></div>
+            <div class="ms-selected-list" id="ovLotList"></div>
+          </div>
+          <div class="ov-ms">
+            <h3>Style</h3>
+            <div class="ms-wrap" id="ovStyleWrap">
+              <div class="ms-input">
+                <input type="text" id="ovStyleSearch" placeholder="Search Style..." autocomplete="off" />
+                <span class="ms-badge" id="ovStyleBadge">0 selected</span>
+              </div>
+              <div class="ms-panel" id="ovStylePanel"></div>
+            </div>
+            <div class="ms-count-line" id="ovStyleCount"></div>
+            <div class="ms-selected-list" id="ovStyleList"></div>
+          </div>
+          <div class="ov-ms">
+            <h3>CO Number</h3>
+            <div class="ms-wrap" id="ovCoWrap">
+              <div class="ms-input">
+                <input type="text" id="ovCoSearch" placeholder="Search CO Number..." autocomplete="off" />
+                <span class="ms-badge" id="ovCoBadge">0 selected</span>
+              </div>
+              <div class="ms-panel" id="ovCoPanel"></div>
+            </div>
+            <div class="ms-count-line" id="ovCoCount"></div>
+            <div class="ms-selected-list" id="ovCoList"></div>
+          </div>
+          <div class="ov-ms">
+            <h3>PO Number</h3>
+            <div class="ms-wrap" id="ovPoWrap">
+              <div class="ms-input">
+                <input type="text" id="ovPoSearch" placeholder="Search PO Number..." autocomplete="off" />
+                <span class="ms-badge" id="ovPoBadge">0 selected</span>
+              </div>
+              <div class="ms-panel" id="ovPoPanel"></div>
+            </div>
+            <div class="ms-count-line" id="ovPoCount"></div>
+            <div class="ms-selected-list" id="ovPoList"></div>
+          </div>
+          <div class="ov-ms">
+            <h3>Color</h3>
+            <div class="ms-wrap" id="ovColorWrap">
+              <div class="ms-input">
+                <input type="text" id="ovColorSearch" placeholder="Search Color..." autocomplete="off" />
+                <span class="ms-badge" id="ovColorBadge">0 selected</span>
+              </div>
+              <div class="ms-panel" id="ovColorPanel"></div>
+            </div>
+            <div class="ms-count-line" id="ovColorCount"></div>
+            <div class="ms-selected-list" id="ovColorList"></div>
+          </div>
+        </div>
+
+        <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);">
+          <div class="kpi-card anim-card">
+            <div class="kpi-label">Total Excess Qty</div>
+            <div class="kpi-value" id="ovKpiQty">0</div>
+            <div class="kpi-sub" id="ovKpiQtySub">Current selection</div>
+          </div>
+          <div class="kpi-card teal anim-card" style="animation-delay:.06s;">
+            <div class="kpi-label">Total Excess Value ($)</div>
+            <div class="kpi-value" id="ovKpiValue">$0</div>
+            <div class="kpi-sub" id="ovKpiValueSub">Current selection</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="panel anim-card" style="animation-delay:.1s">
+            <div class="panel-title">Excess Quantity by Color</div>
+            <div class="chart-box" id="ovQtyChartBox"><canvas id="ovQtyChart"></canvas></div>
+          </div>
+          <div class="panel anim-card" style="animation-delay:.16s">
+            <div class="panel-title">Excess Value by Color ($)</div>
+            <div class="chart-box" id="ovValueChartBox"><canvas id="ovValueChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="panel anim-card" style="animation-delay:.2s;">
+          <div class="panel-title">Available Excess</div>
+          <div id="ovNoDataNote" class="empty-note hidden">No data found for the selected filters.</div>
+          <div class="table-scroll" id="ovTableWrap" style="max-height:420px;">
+            <table class="overview-table">
+              <thead><tr>
+                <th>Lot No.</th><th>Style</th><th>CO Number</th><th>PO Number</th><th>Color</th>
+                <th class="num">Excess Qty</th><th class="num">Excess Value ($)</th>
+              </tr></thead>
+              <tbody id="ovTableBody"></tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div id="view-analysis" class="hidden" style="flex:1; display:flex; flex-direction:column;">
+
+    <!-- PAGE 3 : PARENT ITEM / COLOR / SIZE -->
+    <section id="page-3" class="page-shell hidden">
+      <div class="page-inner">
+        <div class="page-head">
+          <h2>Select Parent Item, Color &amp; Size</h2>
+          <p>Customer and Procurement Group are selected automatically from your report. Search and select one or more values in each field below.</p>
+        </div>
+        <div id="page3Note" class="empty-note hidden" style="margin-bottom:14px;"></div>
+        <div class="panel">
+          <div class="ms-fields-grid">
+
+            <div class="ms-field">
+              <h3>Parent Item Description</h3>
+              <div class="ms-wrap" id="piWrap">
+                <div class="ms-input" id="piInputRow">
+                  <input type="text" id="piSearch" placeholder="Search items..." autocomplete="off" />
+                  <span class="ms-badge" id="piBadge">0 selected</span>
+                </div>
+                <div class="ms-panel" id="piPanel"></div>
+              </div>
+              <div class="ms-count-line" id="piCountLine"></div>
+              <div class="ms-selected-list" id="piSelectedList"></div>
+            </div>
+
+            <div class="ms-field">
+              <h3>Color</h3>
+              <div class="ms-wrap" id="colorWrap">
+                <div class="ms-input" id="colorInputRow">
+                  <input type="text" id="colorSearch" placeholder="Search colors..." autocomplete="off" />
+                  <span class="ms-badge" id="colorBadge">0 selected</span>
+                </div>
+                <div class="ms-panel" id="colorPanel"></div>
+              </div>
+              <div class="ms-count-line" id="colorCountLine"></div>
+              <div class="ms-selected-list" id="colorSelectedList"></div>
+            </div>
+
+            <div class="ms-field">
+              <h3>Size</h3>
+              <div class="ms-wrap" id="sizeWrap">
+                <div class="ms-input" id="sizeInputRow">
+                  <input type="text" id="sizeSearch" placeholder="Search sizes..." autocomplete="off" />
+                  <span class="ms-badge" id="sizeBadge">0 selected</span>
+                </div>
+                <div class="ms-panel" id="sizePanel"></div>
+              </div>
+              <div class="ms-count-line" id="sizeCountLine"></div>
+              <div class="ms-selected-list" id="sizeSelectedList"></div>
+            </div>
+
+          </div>
+        </div>
+        <div class="page-actions">
+          <button class="link-btn" id="backTo2Btn">← Back to Dashboard Selection</button>
+          <button class="btn btn-primary" id="nextFrom3Btn" disabled>View Dashboard →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 4 : DASHBOARD -->
+    <section id="page-4" class="page-shell hidden">
+      <div class="page-inner wide">
+        <div class="page-head">
+          <h2>Excess Summary Dashboard</h2>
+          <p>Aggregated totals for the filters and items you selected.</p>
+        </div>
+
+        <div class="filters-recap" id="filtersRecap"></div>
+
+        <div class="kpi-grid" id="kpiGrid">
+          <div class="kpi-card anim-card" style="animation-delay:.02s">
+            <div class="kpi-label">Total Excess Qty</div>
+            <div class="kpi-value" id="kpiQty">0</div>
+            <div class="kpi-sub">Across all selected items</div>
+          </div>
+          <div class="kpi-card anim-card" style="animation-delay:.06s">
+            <div class="kpi-label">Total Excess Value</div>
+            <div class="kpi-value" id="kpiValue">0</div>
+            <div class="kpi-sub">Across all selected items</div>
+          </div>
+          <div class="kpi-card teal anim-card" style="animation-delay:.1s">
+            <div class="kpi-label">Selected Parent Items</div>
+            <div class="kpi-value" id="kpiItems">0</div>
+            <div class="kpi-sub">Parent Item Descriptions</div>
+          </div>
+          <div class="kpi-card teal anim-card" style="animation-delay:.14s">
+            <div class="kpi-label">Selected Colors</div>
+            <div class="kpi-value" id="kpiColorsSel">0</div>
+            <div class="kpi-sub">Colors chosen on filters</div>
+          </div>
+          <div class="kpi-card teal anim-card" style="animation-delay:.18s">
+            <div class="kpi-label">Selected Sizes</div>
+            <div class="kpi-value" id="kpiSizesSel">0</div>
+            <div class="kpi-sub">Sizes chosen on filters</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="panel anim-card" style="animation-delay:.1s">
+            <div class="panel-title">Excess Quantity by Color</div>
+            <div class="chart-box" id="qtyChartBox"><canvas id="qtyChart"></canvas></div>
+          </div>
+          <div class="panel anim-card" style="animation-delay:.16s">
+            <div class="panel-title">Excess Value by Color</div>
+            <div class="chart-box" id="valueChartBox"><canvas id="valueChart"></canvas></div>
+          </div>
+        </div>
+
+        <div class="panel anim-card" style="animation-delay:.2s; margin-bottom:20px;">
+          <div class="panel-title">Summary by Color</div>
+          <div id="noDataNote" class="empty-note hidden">No data found for the selected filters.</div>
+          <div class="table-scroll" id="summaryTableWrap">
+            <table class="summary-table">
+              <thead><tr><th>Color</th><th class="num">Excess Qty</th><th class="num">Excess Value</th></tr></thead>
+              <tbody id="summaryTableBody"></tbody>
+              <tfoot><tr><td>Total</td><td class="num" id="tableFootQty">0</td><td class="num" id="tableFootValue">0</td></tr></tfoot>
+            </table>
+          </div>
+        </div>
+
+        <div class="request-cta-panel anim-card" style="animation-delay:.24s">
+          <div class="rc-text">
+            <h4>Ready to request excess stock?</h4>
+            <p>Pick a color from this selection and submit a request for the quantity you need.</p>
+          </div>
+          <button class="btn btn-request" id="goToRequestBtn">Request Excess →</button>
+        </div>
+
+        <div class="top-actions">
+          <button class="link-btn" id="backTo3Btn">← Back to Item Selection</button>
+          <button class="link-btn" id="startOverBtn">← Back to Dashboard Selection</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAGE 5 : EXCESS REQUEST -->
+    <section id="page-5" class="page-shell hidden">
+      <div class="page-inner">
+
+        <div id="requestFormView">
+          <div class="page-head">
+            <h2>Request Excess</h2>
+            <p>Review your selection, choose one or more colors, and enter the quantity you'd like to request for each.</p>
+          </div>
+
+          <div class="req-grid" style="grid-template-columns:1fr 420px;">
+            <div class="panel anim-card">
+              <div class="panel-title">Current Selection</div>
+              <table class="review-table">
+                <tr><td>Customer</td><td id="revCustomer">-</td></tr>
+                <tr><td>Procurement Group</td><td id="revProcGroup">-</td></tr>
+                <tr><td>Parent Item</td><td id="revParentItems">-</td></tr>
+                <tr><td>Item Code</td><td id="revItems">-</td></tr>
+                <tr><td>Size</td><td id="revSizes">-</td></tr>
+                <tr><td>Available Excess Qty (all colors)</td><td id="revTotalQty">-</td></tr>
+                <tr><td>Available Excess Value (all colors)</td><td id="revTotalValue">-</td></tr>
+              </table>
+
+              <div class="field-block" style="margin-top:24px; margin-bottom:10px;">
+                <label>Select Color for Request <span style="font-weight:500; color:var(--ink-faint);">— tick one or more colors (e.g. Black and White)</span></label>
+                <input type="text" id="reqColorSearch" class="qty-input" style="font-family:var(--font-sans); font-size:13.5px; width:100%; max-width:340px;" placeholder="Search colors..." autocomplete="off" />
+              </div>
+
+              <div class="table-scroll" style="max-height:340px;">
+                <table class="req-color-table">
+                  <thead><tr>
+                    <th style="width:34px;"></th><th>Color</th><th>Item Code</th>
+                    <th class="num">Available Qty</th><th style="width:150px;">Requested Qty</th>
+                  </tr></thead>
+                  <tbody id="reqColorBody"></tbody>
+                </table>
+              </div>
+              <div id="reqNoColors" class="empty-note hidden">No colors available for this selection.</div>
+
+              <div class="panel-title" style="margin-top:28px;">Request User</div>
+              <div class="field-block">
+                <label>Request user name</label>
+                <input type="text" id="reqUserName" class="qty-input" style="font-family:var(--font-sans); font-size:14px; width:100%; max-width:340px;" placeholder="Type the requester's name" autocomplete="off" />
+              </div>
+              <div class="field-block" style="margin-bottom:0;">
+                <label>Request Account <span style="font-weight:500; color:var(--ink-faint);">— select one or more</span></label>
+                <div class="ms-wrap" id="reqAccountWrap" style="max-width:340px;">
+                  <div class="ms-input" id="reqAccountRow" style="cursor:pointer;">
+                    <input type="text" id="reqAccountDisplay" readonly placeholder="Select account(s)" style="cursor:pointer;" />
+                    <span class="ms-badge" id="reqAccountBadge">0 selected</span>
+                  </div>
+                  <div class="ms-panel" id="reqAccountPanel"></div>
+                </div>
+                <div class="ms-selected-list" id="reqAccountChips"></div>
+              </div>
+              <div class="field-block" style="margin-top:18px; margin-bottom:0;">
+                <label>Allocate for this SKU(s) <span style="font-weight:500; color:var(--ink-faint);">— type one SKU, or several (one per line or separated by commas)</span></label>
+                <textarea id="reqSku" class="qty-input" rows="3" style="font-family:var(--font-mono); font-size:13px; width:100%; max-width:340px; resize:vertical;" placeholder="e.g. SKU-1001&#10;SKU-1002"></textarea>
+              </div>
+            </div>
+
+            <div>
+              <div class="panel anim-card" style="animation-delay:.08s;">
+                <div class="req-summary-panel" style="background:none; border:none; padding:0;">
+                  <h4>Request Summary</h4>
+                  <div class="rs-row"><span>Will be sent to</span><span id="sumEmail">-</span></div>
+                  <div class="rs-row"><span>Customer</span><span id="sumCustomer">-</span></div>
+                  <div class="rs-row"><span>Procurement Group</span><span id="sumProcGroup">-</span></div>
+                  <div class="rs-row"><span>Parent Item</span><span id="sumParentItem">-</span></div>
+                  <div class="rs-row"><span>Item Code</span><span id="sumItem">-</span></div>
+                  <div class="rs-row"><span>Request User Name</span><span id="sumUser">-</span></div>
+                  <div class="rs-row"><span>Request Account</span><span id="sumAccount">-</span></div>
+                  <div class="rs-row"><span>Allocate for SKU(s)</span><span id="sumSku">-</span></div>
+                </div>
+                <table class="sum-lines-table">
+                  <thead><tr><th>Color</th><th class="num">Available Excess Qty</th><th class="num">Requested Qty</th><th class="num">Est. Excess Value</th></tr></thead>
+                  <tbody id="sumLinesBody"></tbody>
+                  <tfoot><tr><td>Total</td><td class="num" id="sumTotalAvail">-</td><td class="num" id="sumTotalReq">-</td><td class="num" id="sumTotalValue">-</td></tr></tfoot>
+                </table>
+                <div class="dz-sub" id="reqHint" style="margin-top:14px;"></div>
+                <button class="btn btn-primary btn-block btn-lg" id="sendRequestBtn" style="margin-top:10px;" disabled>Send Request via Outlook</button>
+                <div class="status-msg" id="reqStatusMsg" style="margin-top:14px;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="page-actions">
+            <button class="link-btn" id="backTo4Btn">← Back to Dashboard</button>
+          </div>
+        </div>
+
+        <div id="requestSuccessView" class="hidden">
+          <div class="success-panel anim-pop">
+            <div class="success-check">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2F7D5A" stroke-width="2.6"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <h2 id="successTitle">Excess request sent successfully ✓</h2>
+            <p id="successDetail">Your request has been recorded.</p>
+            <div id="fallbackButtons" class="btn-row hidden" style="justify-content:center; flex-wrap:wrap; margin:0 0 14px;">
+              <button class="btn btn-ghost" id="downloadEmlBtn">Open Outlook draft with PDF attached (.eml)</button>
+              <button class="btn btn-ghost" id="downloadPdfAgainBtn">Save PDF again</button>
+              <button class="btn btn-ghost" id="copyTableAgainBtn">Copy request table again</button>
+              <button class="btn btn-ghost" id="reopenMailBtn">Open Outlook again</button>
+            </div>
+            <button class="btn btn-primary btn-lg" id="backToDashFromSuccessBtn">Back to Dashboard</button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    </div>
+
+  </main>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============== CONFIG — fill these in once IT completes the Azure AD app registration ============== */
+  const CONFIG = {
+    MSAL_CLIENT_ID: "YOUR-CLIENT-ID-HERE",        // Application (client) ID from Entra ID app registration
+    MSAL_TENANT_ID: "YOUR-TENANT-ID-HERE",        // Directory (tenant) ID
+    REDIRECT_URI: window.location.origin + window.location.pathname,
+    GRAPH_SITE_ID: "YOUR-SHAREPOINT-SITE-ID-HERE", // from Graph Explorer, see setup guide
+    GRAPH_FOLDER_PATH: "Report_Exports/FIN/Inventory/Inventory_Age_Report_New/BLI/B03",
+    REQUEST_EMAIL: "umashaw@brandix.com",
+    AUTO_REFRESH_MINUTES: 15
+  };
+
+  let msalInstance = null;
+  let msalAccount = null;
+  let autoRefreshTimer = null;
+
+  const AUTHORIZED_EMAILS = ["amilaban@brandix.com", "bavodyas@brandix.com"];
+  const ADMIN_EMAIL = "bavodyas@brandix.com"; // has access to the Data Source / Refresh admin panel
+  let isPreviewMode = false;
+
+  // SHA-256 hash of the shared login password, so the plaintext password never
+  // appears in the page source. Used by both the main login and the Excess
+  // Overview gate. (Lightweight client-side check for an internal tool — the
+  // Microsoft sign-in path is the one that provides real backend-verified auth.)
+  const AUTH_PASSWORD_HASH = "cbec185c9b32670ea82e63a04dd13fb5e5f78f961683d9fea2fe7a8efd348947";
+
+  async function sha256Hex(text){
+    const data = new TextEncoder().encode(text);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function isConfigured(){
+    return CONFIG.MSAL_CLIENT_ID && !CONFIG.MSAL_CLIENT_ID.startsWith("YOUR-") &&
+           CONFIG.MSAL_TENANT_ID && !CONFIG.MSAL_TENANT_ID.startsWith("YOUR-") &&
+           CONFIG.GRAPH_SITE_ID && !CONFIG.GRAPH_SITE_ID.startsWith("YOUR-");
+  }
+
+  function initMsal(){
+    if(msalInstance || !window.msal) return;
+    msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId: CONFIG.MSAL_CLIENT_ID,
+        authority: "https://login.microsoftonline.com/" + CONFIG.MSAL_TENANT_ID,
+        redirectUri: CONFIG.REDIRECT_URI
+      },
+      cache: { cacheLocation: "sessionStorage" }
+    });
+    const accounts = msalInstance.getAllAccounts();
+    if(accounts.length) msalAccount = accounts[0];
+  }
+
+  async function getGraphToken(scopes){
+    if(!msalInstance) throw new Error("Sign-in is not initialized.");
+    const request = { scopes, account: msalAccount };
+    try{
+      const result = await msalInstance.acquireTokenSilent(request);
+      return result.accessToken;
+    }catch(silentErr){
+      const result = await msalInstance.acquireTokenPopup(request);
+      msalAccount = result.account;
+      return result.accessToken;
+    }
+  }
+
+  /* ============== State ============== */
+  const state = {
+    headers: [],
+    records: [],
+    baseRecords: [],
+    page2Records: [],
+    page3Records: [],
+    selectedCustomers: new Set(),
+    selectedProcGroups: new Set(),
+    selectedParentItems: new Set(),
+    selectedColors: new Set(),
+    selectedSizes: new Set(),
+    currentPage: 1,
+    fileName: "",
+    uploadedAt: null,
+    currentUserEmail: null,
+    userRole: null,
+    overviewCustomer: "ALL",
+    overviewUnlocked: false
+  };
+
+  const CUSTOMER_ALLOWED = ["PVH", "HARPER WILDE"];
+  const PROC_GROUP_ALLOWED = ["Thread"];
+
+  const COL = {
+    CUSTOMER: colLetterToIndex("BA"),
+    PROC_GROUP: colLetterToIndex("Q"),
+    ITEM_CODE: colLetterToIndex("E")
+  };
+
+  function colLetterToIndex(letters){
+    let idx = 0;
+    const s = letters.toUpperCase();
+    for(let i=0;i<s.length;i++){ idx = idx*26 + (s.charCodeAt(i)-64); }
+    return idx - 1;
+  }
+
+  function normalizeForMatch(s){
+    return (s || "").toString().toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function findHeaderIndex(headers, candidates){
+    const normCandidates = candidates.map(normalizeForMatch);
+    for(let i=0;i<headers.length;i++){
+      const h = normalizeForMatch(headers[i]);
+      if(normCandidates.includes(h)) return i;
+    }
+    for(let i=0;i<headers.length;i++){
+      const h = normalizeForMatch(headers[i]);
+      if(normCandidates.some(c => c && h.includes(c))) return i;
+    }
+    return -1;
+  }
+
+  function toNumber(v){
+    if(v === null || v === undefined) return 0;
+    if(typeof v === "number") return isFinite(v) ? v : 0;
+    const cleaned = String(v).replace(/[,$%\s]/g,"").trim();
+    if(cleaned === "" || cleaned === "-") return 0;
+    const n = parseFloat(cleaned);
+    return isFinite(n) ? n : 0;
+  }
+
+  function fmtInt(n){ return Math.round(n).toLocaleString("en-US"); }
+  function fmtDec(n){ return n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function escapeHtml(s){ return (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+  function escapeAttr(s){ return escapeHtml(s).replace(/`/g,"&#96;"); }
+
+  function replayAnim(el, cls){
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  /* ============== Stepper / navigation ============== */
+  const STEP_LABELS = ["Items", "Dashboard", "Request"];
+  function renderStepper(){
+    const el = document.getElementById("stepper");
+    el.innerHTML = "";
+    STEP_LABELS.forEach((label, i) => {
+      const n = i + 3; // pages 3..5
+      const step = document.createElement("div");
+      step.className = "step" + (n === state.currentPage ? " is-active" : (n < state.currentPage ? " is-done" : ""));
+      step.innerHTML = `<span class="step-num">${n < state.currentPage ? "✓" : i+1}</span><span class="step-label">${label}</span>`;
+      el.appendChild(step);
+      if(i < STEP_LABELS.length - 1){
+        const conn = document.createElement("div");
+        conn.className = "step-connector";
+        el.appendChild(conn);
+      }
+    });
+  }
+
+  function goToPage(n){
+    state.currentPage = n;
+    [3,4,5].forEach(p => {
+      document.getElementById("page-"+p).classList.toggle("hidden", p !== n);
+    });
+    renderStepper();
+    if(n === 3) renderPage3();
+    if(n === 4) renderDashboard();
+    if(n === 5) renderRequestPage();
+    const activeSection = document.getElementById("page-"+n);
+    replayAnim(activeSection, "page-fade");
+    window.scrollTo({top:0, behavior:"instant"});
+  }
+
+  /* ============== File upload ============== */
+  const uploadStatusMsg = document.getElementById("uploadStatusMsg");
+  function showUploadStatus(t, a, b){ showStatus(t, a, b, uploadStatusMsg); }
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("fileInput");
+  const fileChip = document.getElementById("fileChip");
+  const fileChipName = document.getElementById("fileChipName");
+  const fileChipRemove = document.getElementById("fileChipRemove");
+  const uploadBtn = document.getElementById("uploadBtn");
+  const clearBtn = document.getElementById("clearBtn");
+  const statusMsg = document.getElementById("uploadStatusMsg");
+
+  let pendingFile = null;
+
+  dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("is-drag"); });
+  dropzone.addEventListener("dragleave", () => dropzone.classList.remove("is-drag"));
+  dropzone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropzone.classList.remove("is-drag");
+    if(e.dataTransfer.files && e.dataTransfer.files[0]) handleFileSelected(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener("change", e => {
+    if(e.target.files && e.target.files[0]) handleFileSelected(e.target.files[0]);
+  });
+
+  function handleFileSelected(file){
+    hideStatus(uploadStatusMsg);
+    if(!/\.(csv|xlsx|xls)$/i.test(file.name)){
+      showUploadStatus("error", "That file type isn't supported.", "Please choose a .csv, .xlsx, or .xls file.");
+      pendingFile = null;
+      uploadBtn.disabled = true;
+      fileChip.classList.remove("is-visible");
+      return;
+    }
+    pendingFile = file;
+    state.fileName = file.name;
+    fileChipName.textContent = file.name;
+    fileChip.classList.add("is-visible");
+    uploadBtn.disabled = false;
+  }
+
+  fileChipRemove.addEventListener("click", (e) => { e.stopPropagation(); resetUploadUI(); });
+
+  function resetUploadUI(){
+    pendingFile = null;
+    fileInput.value = "";
+    fileChip.classList.remove("is-visible");
+    uploadBtn.disabled = true;
+    hideStatus(uploadStatusMsg);
+  }
+
+  clearBtn.addEventListener("click", () => { resetUploadUI(); });
+
+  function clearAllSelections(){
+    state.page2Records = [];
+    state.page3Records = [];
+    state.selectedCustomers.clear();
+    state.selectedProcGroups.clear();
+    state.selectedParentItems.clear();
+    state.selectedColors.clear();
+    state.selectedSizes.clear();
+  }
+
+  function showStatus(type, title, detail, targetEl){
+    const el = targetEl || statusMsg;
+    el.className = "status-msg is-visible " + type;
+    const icon = type === "success"
+      ? '<svg class="msg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      : type === "info"
+      ? '<svg class="msg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5M12 8h.01" stroke-linecap="round"/></svg>'
+      : '<svg class="msg-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01" stroke-linecap="round"/></svg>';
+    el.innerHTML = `${icon}<div><div>${title}</div>${detail ? `<div class="msg-detail">${detail}</div>` : ""}</div>`;
+  }
+  function hideStatus(targetEl){ const el = targetEl || statusMsg; el.className = "status-msg"; el.innerHTML = ""; }
+
+  uploadBtn.addEventListener("click", () => {
+    if(!pendingFile || !adminEmail) return;               // uploads are admin-only
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner"></span> Processing...';
+    hideStatus(uploadStatusMsg);
+
+    const isExcel = /\.(xlsx|xls)$/i.test(pendingFile.name);
+
+    if(isExcel){
+      const reader = new FileReader();
+      reader.onload = function(e){
+        try{
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, {type:"array"});
+          const firstSheetName = workbook.SheetNames[0];
+          if(!firstSheetName) throw new Error("This workbook doesn't contain any sheets.");
+          const sheet = workbook.Sheets[firstSheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:"", raw:true});
+          uploadBtn.innerHTML = "Upload";
+          processParsedRows(rows);
+          persistReport(pendingFile, null);
+        }catch(err){
+          uploadBtn.innerHTML = "Upload";
+          uploadBtn.disabled = false;
+          showUploadStatus("error", "Couldn't process this file.", err.message || String(err));
+        }
+      };
+      reader.onerror = function(){
+        uploadBtn.innerHTML = "Upload";
+        uploadBtn.disabled = false;
+        showUploadStatus("error", "Couldn't read this file.", "Please check the file and try again.");
+      };
+      reader.readAsArrayBuffer(pendingFile);
+    }else{
+      Papa.parse(pendingFile, {
+        skipEmptyLines: "greedy",
+        complete: function(results){
+          uploadBtn.innerHTML = "Upload";
+          try{
+            processParsedRows(results.data);
+            persistReport(pendingFile, null);
+          }catch(err){
+            showUploadStatus("error", "Couldn't process this file.", err.message || String(err));
+            uploadBtn.disabled = false;
+            return;
+          }
+        },
+        error: function(err){
+          uploadBtn.innerHTML = "Upload";
+          uploadBtn.disabled = false;
+          showUploadStatus("error", "Couldn't read this file.", err && err.message ? err.message : "Please check the file and try again.");
+        }
+      });
+    }
+  });
+
+  function processParsedRows(rows){
+    if(!rows || rows.length < 2){
+      throw new Error("The file needs a header row plus at least one data row.");
+    }
+    const headers = rows[0].map(h => (h||"").toString());
+    const dataRows = rows.slice(1);
+
+    const piIdx = findHeaderIndex(headers, ["parent item description"]);
+    const colorIdx = findHeaderIndex(headers, ["color"]);
+    const sizeIdx = findHeaderIndex(headers, ["size"]);
+    const qtyIdx = findHeaderIndex(headers, ["excess qty", "excess quantity"]);
+    const valIdx = findHeaderIndex(headers, ["excess value"]);
+
+    // Prefer an actual "Customer" / "Procurement Group" header if present; otherwise fall
+    // back to the fixed column positions (BA / Q) used by older exports without those headers.
+    let customerIdx = findHeaderIndex(headers, ["customer"]);
+    if(customerIdx === -1) customerIdx = COL.CUSTOMER;
+    let procGroupIdx = findHeaderIndex(headers, ["procurement group"]);
+    if(procGroupIdx === -1) procGroupIdx = COL.PROC_GROUP;
+
+    // Optional fields used only by the Excess Overview dashboard — not fatal if missing.
+    const lotIdx = findHeaderIndex(headers, ["lot no", "lot number", "lot"]);
+    const styleIdx = findHeaderIndex(headers, ["style"]);
+    const coIdx = findHeaderIndex(headers, ["co number", "co no", "change order number"]);
+    const poIdx = findHeaderIndex(headers, ["po number", "po no", "purchase order number"]);
+
+    const missing = [];
+    if(piIdx === -1) missing.push("Parent Item Description");
+    if(colorIdx === -1) missing.push("Color");
+    if(sizeIdx === -1) missing.push("Size");
+    if(qtyIdx === -1) missing.push("Excess Qty");
+    if(valIdx === -1) missing.push("Excess Value");
+    if(missing.length){
+      throw new Error("Missing required column(s): " + missing.join(", "));
+    }
+
+    const records = [];
+    dataRows.forEach(r => {
+      const hasContent = r.some(c => c !== null && c !== undefined && String(c).trim() !== "");
+      if(!hasContent) return;
+      records.push({
+        customer: (r[customerIdx] || "").toString().trim(),
+        procGroup: (r[procGroupIdx] || "").toString().trim(),
+        parentItem: (r[piIdx] || "").toString().trim(),
+        color: (r[colorIdx] || "").toString().trim() || "Unspecified",
+        size: (r[sizeIdx] || "").toString().trim() || "Unspecified",
+        excessQty: toNumber(r[qtyIdx]),
+        excessValue: toNumber(r[valIdx]),
+        lotNo: lotIdx > -1 ? (r[lotIdx] || "").toString().trim() : "",
+        style: styleIdx > -1 ? (r[styleIdx] || "").toString().trim() : "",
+        coNumber: coIdx > -1 ? (r[coIdx] || "").toString().trim() : "",
+        poNumber: poIdx > -1 ? (r[poIdx] || "").toString().trim() : "",
+        itemCode: (r[COL.ITEM_CODE] === null || r[COL.ITEM_CODE] === undefined ? "" : String(r[COL.ITEM_CODE])).trim()
+      });
+    });
+
+    if(records.length === 0){
+      throw new Error("No usable data rows were found in this file.");
+    }
+
+    state.headers = headers;
+    state.records = records;
+    state.baseRecords = records.filter(r =>
+      CUSTOMER_ALLOWED.map(c => c.toUpperCase()).includes(r.customer.toUpperCase()) &&
+      r.procGroup.toUpperCase() === "THREAD"
+    );
+    state.uploadedAt = new Date();
+    clearAllSelections();
+    autoSelectFilters();
+
+    const uploadBtnEl = document.getElementById("uploadBtn");
+    if(uploadBtnEl) uploadBtnEl.disabled = false;
+    showUploadStatus("success", "Upload Successful ✓", `${records.length.toLocaleString()} rows processed from ${state.fileName}`);
+    updateDatasetBar();
+    onDataLoaded();
+  }
+
+  // Customer (PVH, HARPER WILDE) and Procurement Group (Thread) are selected automatically
+  // from the uploaded report — no manual filter step.
+  function autoSelectFilters(){
+    const custAllowed = CUSTOMER_ALLOWED.map(c => c.toUpperCase());
+    const procAllowed = PROC_GROUP_ALLOWED.map(p => p.toUpperCase());
+    state.records.forEach(r => {
+      const cu = r.customer.toUpperCase(), pg = r.procGroup.toUpperCase();
+      if(custAllowed.includes(cu)) state.selectedCustomers.add(cu);
+      if(procAllowed.includes(pg)) state.selectedProcGroups.add(pg);
+    });
+    state.page2Records = state.records.filter(r =>
+      state.selectedCustomers.has(r.customer.toUpperCase()) &&
+      state.selectedProcGroups.has(r.procGroup.toUpperCase())
+    );
+  }
+
+  function onDataLoaded(){
+    // Re-render whichever dashboard is currently visible so a manual upload or
+    // SharePoint refresh reflects immediately without extra navigation.
+    if(!document.getElementById("view-overview").classList.contains("hidden")){ refreshOverviewFilters(); renderOverview(); }
+    if(!document.getElementById("view-analysis").classList.contains("hidden")) goToPage(3);
+  }
+
+  function updateDatasetBar(){
+    const bar = document.getElementById("datasetBar");
+    if(!state.records.length){ bar.classList.add("hidden"); return; }
+    document.getElementById("dsFileName").textContent = state.fileName || "-";
+    document.getElementById("dsRowCount").textContent = state.records.length.toLocaleString();
+    document.getElementById("dsUploadedAt").textContent = state.uploadedAt
+      ? state.uploadedAt.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})
+      : "-";
+    bar.classList.remove("hidden");
+  }
+
+  /* ============== Access control + view routing ============== */
+  const sidebar = document.getElementById("sidebar");
+  const DASH = { overview: { id: "overview", name: "Excess Overview" }, analysis: { id: "analysis", name: "Excess Analysis & Request" } };
+  const DASH_IDS = ["overview", "analysis"];
+  const isBrandixId = s => /^[a-z0-9._%+-]+@brandix\.com$/.test(s);
+
+  // storage for the access lists and requests (browser-local demo; swap for a shared SharePoint/Dataverse store)
+  const accMem = {};
+  const accKv = {
+    get(k){ try{ const v = localStorage.getItem(k); return v === null ? (accMem[k] === undefined ? null : accMem[k]) : v; }catch(e){ return accMem[k] === undefined ? null : accMem[k]; } },
+    set(k, v){ accMem[k] = v; try{ localStorage.setItem(k, v); }catch(e){ /* memory only */ } }
+  };
+  const accParse = (k, fb) => { try{ const v = accKv.get(k); return v ? JSON.parse(v) : fb; }catch(e){ return fb; } };
+  const AccessStore = {
+    users(d){ return (accParse("excess_access", {})[d] || []).slice(); },
+    saveUsers(d, list){ const a = accParse("excess_access", {}); a[d] = Array.from(new Set(list)); accKv.set("excess_access", JSON.stringify(a)); },
+    hasAccess(d, uid){ return AUTHORIZED_EMAILS.includes(uid) || this.users(d).includes(uid); },
+    requests(){ return accParse("excess_requests", []); },
+    saveRequests(r){ accKv.set("excess_requests", JSON.stringify(r)); }
+  };
+
+  let sessionUser = null; try{ sessionUser = sessionStorage.getItem("excess_user"); }catch(e){}
+  let adminEmail = null;  try{ adminEmail = sessionStorage.getItem("excess_admin"); }catch(e){}
+  let pendingDash = null;
+  if(sessionUser) state.currentUserEmail = sessionUser;
+
+  function updateSidebarUser(){
+    document.getElementById("sbUserEmail").textContent = sessionUser || "-";
+    document.getElementById("sbUserRole").textContent = sessionUser ? (AUTHORIZED_EMAILS.includes(sessionUser) ? "Administrator" : "User") : "-";
+  }
+
+  function showView(name){
+    const ids = { select: "view-select", userid: "view-userid", adminLogin: "view-overview-login", admin: "view-admin", overview: "view-overview", analysis: "view-analysis" };
+    // dashboards open only for a verified User ID that has been granted that dashboard
+    if((name === "overview" || name === "analysis") && !(sessionUser && AccessStore.hasAccess(name, sessionUser))) name = "select";
+    if(name === "admin" && !adminEmail) name = "adminLogin";
+
+    state.currentView = name;
+    Object.values(ids).forEach(id => document.getElementById(id).classList.add("hidden"));
+    document.getElementById(ids[name]).classList.remove("hidden");
+    sidebar.classList.toggle("hidden", !(sessionUser && ["select", "userid", "overview", "analysis"].includes(name)));
+    document.getElementById("datasetBar").classList.toggle("hidden", !(["overview", "analysis"].includes(name) && state.records.length));
+    document.querySelectorAll(".sb-link").forEach(btn => btn.classList.toggle("is-active", btn.dataset.view === name));
+    document.getElementById("stepper").classList.toggle("hidden", name !== "analysis");
+
+    if(name === "overview"){ refreshOverviewFilters(); renderOverview(); }
+    if(name === "adminLogin"){
+      document.getElementById("ovLoginEmail").value = "";
+      document.getElementById("ovLoginPassword").value = "";
+      hideStatus(document.getElementById("ovLoginStatus"));
+    }
+    if(name === "admin"){
+      document.getElementById("adminEmailLabel").textContent = adminEmail;
+      initDrafts(); renderAdmin(); refreshFolderPathInput(); renderReportBox();
+    }
+    if(name === "analysis") goToPage(state.currentPage >= 3 ? state.currentPage : 3);
+
+    replayAnim(document.getElementById(ids[name]), "page-fade");
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  /* ============== Auto-load the latest file from a chosen folder ============== */
+  // Browsers can't open a typed path like C:\... by themselves. The folder is chosen once
+  // (File System Access API, Edge/Chrome), remembered, then scanned for the newest-dated file.
+  const FOLDER_POLL_MINUTES = 5;
+  const folderSupported = typeof window.showDirectoryPicker === "function";
+  let folderHandle = null;
+  let folderPollTimer = null;
+  let loadedFileKey = null;
+  let pendingNewFile = null;
+
+  const folderStatusLine = document.getElementById("folderStatusLine");
+  const folderChooseBtn = document.getElementById("folderChooseBtn");
+  const folderLoadBtn = document.getElementById("folderLoadBtn");
+
+  function idbOpen(){
+    return new Promise((res, rej) => {
+      const rq = indexedDB.open("excessAnalyzer", 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore("kv");
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+    });
+  }
+  async function idbGet(key){
+    try{
+      const db = await idbOpen();
+      return await new Promise((res, rej) => {
+        const rq = db.transaction("kv").objectStore("kv").get(key);
+        rq.onsuccess = () => res(rq.result);
+        rq.onerror = () => rej(rq.error);
+      });
+    }catch(e){ return null; }
+  }
+  async function idbSet(key, val){
+    try{
+      const db = await idbOpen();
+      await new Promise((res, rej) => {
+        const tx = db.transaction("kv", "readwrite");
+        tx.objectStore("kv").put(val, key);
+        tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+      });
+    }catch(e){ /* not critical */ }
+  }
+
+  const MONTH_NUM = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+  function validYMD(y, m, d){ return y >= 2000 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31; }
+  function parseDateFromName(name){
+    const base = String(name).replace(/\.[^.]+$/, "");
+    let m;
+    if((m = base.match(/(?<!\d)(20\d{2})[-_. ](\d{1,2})[-_. ](\d{1,2})(?!\d)/)) && validYMD(+m[1], +m[2], +m[3]))
+      return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    if((m = base.match(/(?<!\d)(\d{1,2})[-_. ](\d{1,2})[-_. ](20\d{2})(?!\d)/))){
+      let d = +m[1], mo = +m[2];
+      if(mo > 12 && d <= 12){ const t = d; d = mo; mo = t; }
+      if(validYMD(+m[3], mo, d)) return Date.UTC(+m[3], mo - 1, d);
+    }
+    if((m = base.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/)) && validYMD(+m[1], +m[2], +m[3]))
+      return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    if((m = base.match(/(?<!\d)(\d{2})(\d{2})(20\d{2})(?!\d)/)) && validYMD(+m[3], +m[2], +m[1]))
+      return Date.UTC(+m[3], +m[2] - 1, +m[1]);
+    if((m = base.match(/(?<!\d)(\d{1,2})[-_. ]?([A-Za-z]{3})[A-Za-z]*[-_. ,]*(20\d{2})/)) && MONTH_NUM[m[2].toLowerCase()] && validYMD(+m[3], MONTH_NUM[m[2].toLowerCase()], +m[1]))
+      return Date.UTC(+m[3], MONTH_NUM[m[2].toLowerCase()] - 1, +m[1]);
+    if((m = base.match(/([A-Za-z]{3})[A-Za-z]*[-_. ]?(\d{1,2})[-_. ,]*(20\d{2})/)) && MONTH_NUM[m[1].toLowerCase()] && validYMD(+m[3], MONTH_NUM[m[1].toLowerCase()], +m[2]))
+      return Date.UTC(+m[3], MONTH_NUM[m[1].toLowerCase()] - 1, +m[2]);
+    return null;
+  }
+
+  async function findLatestFileInFolder(dirHandle){
+    const found = [];
+    async function scan(handle, depth, folderDate){
+      for await (const entry of handle.values()){
+        if(entry.kind === "file"){
+          if(!/\.(xlsx|xls|csv)$/i.test(entry.name) || entry.name.startsWith("~$")) continue;
+          const file = await entry.getFile();
+          const nameDate = parseDateFromName(entry.name);
+          found.push({ file, name: entry.name, modified: file.lastModified, dateKey: nameDate !== null ? nameDate : folderDate });
+        }else if(entry.kind === "directory" && depth < 1){
+          await scan(entry, depth + 1, parseDateFromName(entry.name));
+        }
+      }
+    }
+    await scan(dirHandle, 0, null);
+    if(!found.length) return null;
+    found.sort((a, b) => ((b.dateKey === null ? -1 : b.dateKey) - (a.dateKey === null ? -1 : a.dateKey)) || (b.modified - a.modified));
+    return found[0];
+  }
+
+  function fileToBuffer(file){
+    if(file.arrayBuffer) return file.arrayBuffer();
+    return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsArrayBuffer(file); });
+  }
+
+  async function readRowsFromFile(file){
+    const buf = await fileToBuffer(file);
+    if(/\.csv$/i.test(file.name)){
+      return Papa.parse(new TextDecoder("utf-8").decode(buf), { skipEmptyLines: "greedy" }).data;
+    }
+    const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+  }
+
+  function setFolderLine(text){ folderStatusLine.textContent = text; }
+  function fmtDateKey(ms){ return ms === null || ms === undefined ? "no date in name" : new Date(ms).toISOString().slice(0, 10); }
+
+  async function ensureFolderPermission(interactive){
+    if(!folderHandle) return false;
+    let perm = await folderHandle.queryPermission({ mode: "read" });
+    if(perm !== "granted" && interactive) perm = await folderHandle.requestPermission({ mode: "read" });
+    return perm === "granted";
+  }
+
+  async function loadLatestFromFolder(opts){
+    const interactive = !(opts && opts.silent);
+    const force = !!(opts && opts.force);
+    if(!folderHandle) return false;
+    try{
+      if(!(await ensureFolderPermission(interactive))){
+        setFolderLine("Folder: " + folderHandle.name + " — click “Load latest file” to allow access for this session.");
+        folderLoadBtn.disabled = false;
+        return false;
+      }
+      const latest = await findLatestFileInFolder(folderHandle);
+      if(!latest){
+        setFolderLine("Folder: " + folderHandle.name + " — no Excel or CSV files found in it.");
+        if(interactive) showUploadStatus("error", "No Excel or CSV file was found in that folder.");
+        return false;
+      }
+      const key = latest.name + "|" + latest.modified;
+      if(!force && key === loadedFileKey){
+        setFolderLine("Folder: " + folderHandle.name + " — up to date (" + latest.name + "). Checked " + new Date().toLocaleTimeString() + ".");
+        return true;
+      }
+      const busyView = state.currentView === "overview" || state.currentView === "analysis";
+      if(!interactive && loadedFileKey && state.records.length && busyView){
+        pendingNewFile = latest;
+        document.getElementById("newFileName").textContent = latest.name;
+        document.getElementById("newFileNotice").classList.remove("hidden");
+        return false;
+      }
+      folderLoadBtn.disabled = true;
+      folderLoadBtn.innerHTML = '<span class="spinner"></span> Loading...';
+      const rows = await readRowsFromFile(latest.file);
+      state.fileName = latest.name;
+      processParsedRows(rows);
+      persistReport(latest.file, key);
+      state.uploadedAt = new Date(latest.modified);
+      updateDatasetBar();
+      loadedFileKey = key;
+      pendingNewFile = null;
+      document.getElementById("newFileNotice").classList.add("hidden");
+      setFolderLine("Folder: " + folderHandle.name + " — loaded " + latest.name + " (date " + fmtDateKey(latest.dateKey) + "). Checked " + new Date().toLocaleTimeString() + ".");
+      startFolderPolling();
+      return true;
+    }catch(err){
+      showUploadStatus("error", "Couldn't load the latest file from the folder.", err && err.message ? err.message : String(err));
+      return false;
+    }finally{
+      folderLoadBtn.disabled = !folderHandle;
+      folderLoadBtn.innerHTML = "Load latest file";
+    }
+  }
+
+  function startFolderPolling(){
+    if(folderPollTimer) clearInterval(folderPollTimer);
+    folderPollTimer = setInterval(() => loadLatestFromFolder({ silent: true }), FOLDER_POLL_MINUTES * 60 * 1000);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible" && folderHandle && state.currentView && state.currentView !== "login"){
+      loadLatestFromFolder({ silent: true });
+    }
+  });
+
+  folderChooseBtn.addEventListener("click", async () => {
+    if(!adminEmail) return;                                  // admin-only
+    if(!folderSupported){
+      showUploadStatus("error", "This browser can't open folders.", "Use Microsoft Edge or Google Chrome, or upload the file manually below.");
+      return;
+    }
+    try{
+      const handle = await window.showDirectoryPicker({ id: "inventory-report", mode: "read", startIn: "documents" });
+      folderHandle = handle;
+      await idbSet("inventoryFolder", handle);
+      hideStatus(uploadStatusMsg);
+      await loadLatestFromFolder({ force: true });
+      if(handle.name.toLowerCase() !== EXPECTED_FOLDER_NAME.toLowerCase()){
+        setFolderLine(folderStatusLine.textContent + " Note: the shared folder name is “" + EXPECTED_FOLDER_NAME + "”, but you chose “" + handle.name + "”.");
+      }
+    }catch(err){
+      if(err && err.name !== "AbortError"){
+        showUploadStatus("error", "Couldn't open that folder.", err.message || String(err));
+      }
+    }
+  });
+  folderLoadBtn.addEventListener("click", () => { if(adminEmail) loadLatestFromFolder({ force: true }); });
+  document.getElementById("newFileLoadBtn").addEventListener("click", async () => {
+    if(!pendingNewFile) return;
+    await loadLatestFromFolder({ force: true });
+    if(state.currentView === "overview") renderOverview();
+    if(state.currentView === "analysis") goToPage(2);
+  });
+
+  /* ---- Per-user OneDrive path (every user has their own C:\\Users\\<name> folder) ---- */
+  const EXPECTED_FOLDER_NAME = "Inventry report";
+  const folderPathInput = document.getElementById("folderPathInput");
+  function pathForUser(){
+    let saved = null;
+    try{ saved = localStorage.getItem("excessFolderPath"); }catch(e){ /* storage blocked */ }
+    if(saved) return saved;
+    const prefix = adminEmail ? adminEmail.split("@")[0] : "<your-username>";
+    return "C:\\Users\\" + prefix + "\\OneDrive - Brandix Lanka Pvt Ltd\\Documents\\" + EXPECTED_FOLDER_NAME;
+  }
+  function refreshFolderPathInput(){ folderPathInput.value = pathForUser(); }
+  folderPathInput.addEventListener("input", () => {
+    try{ localStorage.setItem("excessFolderPath", folderPathInput.value.trim()); }catch(e){ /* ignore */ }
+  });
+  document.getElementById("folderCopyPathBtn").addEventListener("click", async (e) => {
+    try{
+      await navigator.clipboard.writeText(folderPathInput.value);
+      e.target.textContent = "Copied ✓";
+    }catch(err){
+      folderPathInput.select();
+      e.target.textContent = "Press Ctrl+C";
+    }
+    setTimeout(() => { e.target.textContent = "Copy path"; }, 1800);
+  });
+
+  async function initFolderAutoLoad(){
+    if(!folderSupported){
+      setFolderLine("Folder auto-load needs Microsoft Edge or Google Chrome. You can still upload a file manually below.");
+      folderChooseBtn.disabled = true;
+      return;
+    }
+    const saved = await idbGet("inventoryFolder");
+    if(saved){
+      folderHandle = saved;
+      folderLoadBtn.disabled = false;
+      setFolderLine("Folder: " + saved.name + " — saved. Checking for a newer file...");
+      startFolderPolling();
+      await loadLatestFromFolder({ silent: true });
+    }
+  }
+
+  // ---- the report is stored on this computer so both dashboards use it without anyone re-uploading ----
+  async function persistReport(file, key){
+    try{
+      const data = await fileToBuffer(file);
+      await idbSet("report", { name: file.name, type: file.type || "", data });
+      localStorage.setItem("excessReportMeta", JSON.stringify({ name: file.name, size: file.size, by: adminEmail || "automatic update", ts: Date.now(), key: key || null }));
+    }catch(e){ console.warn("Could not store the report:", e); }
+    renderReportBox();
+  }
+  async function loadStoredReport(){
+    try{
+      const rec = await idbGet("report");
+      if(!rec || !rec.data) return;
+      let meta = null; try{ meta = JSON.parse(localStorage.getItem("excessReportMeta") || "null"); }catch(e){}
+      const file = new File([rec.data], rec.name, { type: rec.type || "" });
+      const rows = await readRowsFromFile(file);
+      state.fileName = rec.name;
+      processParsedRows(rows);
+      if(meta && meta.ts) state.uploadedAt = new Date(meta.ts);
+      loadedFileKey = meta && meta.key ? meta.key : null;
+      updateDatasetBar();
+    }catch(e){ console.warn("Could not load the stored report:", e); }
+  }
+  function renderReportBox(){
+    let m = null; try{ m = JSON.parse(localStorage.getItem("excessReportMeta") || "null"); }catch(e){}
+    document.getElementById("reportBox").classList.toggle("hidden", !m);
+    if(m){
+      document.getElementById("reportName").textContent = m.name;
+      document.getElementById("reportMeta").textContent = `${(m.size / 1024).toFixed(1)} KB · by ${m.by} · ${new Date(m.ts).toLocaleString()}`;
+    }
+  }
+  document.getElementById("reportRemoveBtn").addEventListener("click", async () => {
+    if(!adminEmail) return;
+    const ok = typeof window.confirm === "function" ? window.confirm("Remove the current report? Both dashboards will have no data until a new report is uploaded.") : true;
+    if(!ok) return;
+    await idbSet("report", null);
+    try{ localStorage.removeItem("excessReportMeta"); }catch(e){}
+    loadedFileKey = null;
+    state.headers = []; state.records = []; state.baseRecords = []; state.uploadedAt = null;
+    clearAllSelections(); updateDatasetBar(); onDataLoaded(); renderReportBox();
+    showUploadStatus("info", "Report removed.");
+  });
+
+  /* ============== Admin Panel sign-in ============== */
+  const ovLoginEmail = document.getElementById("ovLoginEmail");
+  const ovLoginPassword = document.getElementById("ovLoginPassword");
+  const ovPasswordToggle = document.getElementById("ovPasswordToggle");
+  const ovLoginBtn = document.getElementById("ovLoginBtn");
+  const ovLoginStatus = document.getElementById("ovLoginStatus");
+
+  ovPasswordToggle.addEventListener("click", () => {
+    const showing = ovLoginPassword.type === "text";
+    ovLoginPassword.type = showing ? "password" : "text";
+    ovPasswordToggle.textContent = showing ? "SHOW" : "HIDE";
+  });
+  document.getElementById("ovForgotLink").addEventListener("click", () => {
+    showStatus("info", "Password reset isn't self-service.", "Contact your Brandix system administrator to reset access.", ovLoginStatus);
+  });
+  document.getElementById("ovLoginBackBtn").addEventListener("click", () => showView("select"));
+
+  async function handleAdminLogin(){
+    ovLoginBtn.disabled = true;
+    ovLoginBtn.innerHTML = '<span class="spinner"></span> Signing in...';
+    hideStatus(ovLoginStatus);
+    try{
+      const email = (ovLoginEmail.value || "").trim().toLowerCase();
+      const ok = AUTHORIZED_EMAILS.includes(email) && (await sha256Hex(ovLoginPassword.value || "")) === AUTH_PASSWORD_HASH;
+      if(!ok){
+        showStatus("error", "Invalid login details. Please check your email and password.", null, ovLoginStatus);
+        return;
+      }
+      adminEmail = email; try{ sessionStorage.setItem("excess_admin", email); }catch(e){}
+      showStatus("success", "Login successful ✓", null, ovLoginStatus);
+      setTimeout(() => showView("admin"), 450);
+    }catch(err){
+      showStatus("error", "Invalid login details. Please check your email and password.", null, ovLoginStatus);
+    }finally{
+      ovLoginBtn.disabled = false;
+      ovLoginBtn.innerHTML = "Sign in";
+    }
+  }
+  ovLoginBtn.addEventListener("click", handleAdminLogin);
+  ovLoginPassword.addEventListener("keydown", (e) => { if(e.key === "Enter") handleAdminLogin(); });
+
+
+  async function fetchLatestFileFromSharePoint(){
+    const token = await getGraphToken(["Files.Read.All", "Sites.Read.All"]);
+    const listUrl = `https://graph.microsoft.com/v1.0/sites/${CONFIG.GRAPH_SITE_ID}/drive/root:/${encodeURI(CONFIG.GRAPH_FOLDER_PATH)}:/children?$orderby=lastModifiedDateTime desc&$top=5`;
+    const listResp = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
+    if(!listResp.ok) throw new Error("SharePoint folder request failed (" + listResp.status + ").");
+    const listData = await listResp.json();
+    const files = (listData.value || []).filter(item => item.file && /\.(xlsx|xls|csv)$/i.test(item.name));
+    if(files.length === 0) throw new Error("No Excel or CSV file was found in the configured folder.");
+    const latest = files[0];
+
+    const downloadUrl = latest["@microsoft.graph.downloadUrl"];
+    const fileResp = await fetch(downloadUrl);
+    if(!fileResp.ok) throw new Error("Could not download the latest file from SharePoint.");
+    const buffer = await fileResp.arrayBuffer();
+
+    let rows;
+    if(/\.csv$/i.test(latest.name)){
+      const text = new TextDecoder("utf-8").decode(buffer);
+      rows = Papa.parse(text, { skipEmptyLines: "greedy" }).data;
+    }else{
+      const workbook = XLSX.read(new Uint8Array(buffer), { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+    }
+    return { rows, fileName: latest.name, modifiedAt: new Date(latest.lastModifiedDateTime) };
+  }
+
+  async function loadLatestData(silent){
+    if(!isConfigured() || isPreviewMode) return; // preview mode / not-yet-configured relies on manual upload only
+    try{
+      initMsal();
+      const { rows, fileName, modifiedAt } = await fetchLatestFileFromSharePoint();
+      state.fileName = fileName;
+      processParsedRows(rows);
+      state.uploadedAt = modifiedAt;
+      updateDatasetBar();
+      startAutoRefresh();
+    }catch(err){
+      console.warn("SharePoint load failed:", err);
+    }
+  }
+
+  function startAutoRefresh(){
+    if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(() => loadLatestData(true), CONFIG.AUTO_REFRESH_MINUTES * 60 * 1000);
+  }
+
+  /* ============== User ID check + Access Request ============== */
+  const accStatus = document.getElementById("accStatus");
+  const accActions = document.getElementById("accActions");
+
+  function chooseDashboard(dashId){
+    pendingDash = dashId;
+    document.getElementById("useridDashChip").textContent = DASH[dashId].name;
+    document.getElementById("userIdInput").value = sessionUser || "";
+    hideStatus(accStatus); accActions.innerHTML = "";
+    if(sessionUser && AccessStore.hasAccess(dashId, sessionUser)){ showView(dashId); return; }
+    showView("userid");
+    if(sessionUser) verifyUser(); else document.getElementById("userIdInput").focus();
+  }
+
+  function verifyUser(){
+    const uid = document.getElementById("userIdInput").value.trim().toLowerCase();
+    const d = DASH[pendingDash];
+    hideStatus(accStatus); accActions.innerHTML = "";
+    if(!isBrandixId(uid)){
+      showStatus("error", "Enter a valid Brandix User ID, for example name@brandix.com.", null, accStatus);
+      return;
+    }
+    if(AccessStore.hasAccess(pendingDash, uid)){
+      sessionUser = uid; state.currentUserEmail = uid;
+      try{ sessionStorage.setItem("excess_user", uid); }catch(e){}
+      updateSidebarUser();
+      showStatus("success", "Access granted ✓", "Opening " + d.name + "...", accStatus);
+      const target = pendingDash;
+      setTimeout(() => { if(pendingDash === target) showView(target); }, 450);
+    }else{
+      showStatus("error", "No access yet", uid + " has not been approved for " + d.name + ".", accStatus);
+      accActions.innerHTML = '<button class="btn btn-primary btn-block" id="accRequestBtn" style="margin-top:12px;">Access Request</button>';
+      document.getElementById("accRequestBtn").addEventListener("click", () => requestAccess(uid));
+    }
+  }
+
+  function requestAccess(uid){
+    const d = DASH[pendingDash];
+    const reqs = AccessStore.requests();
+    const dup = reqs.find(r => r.user === uid && r.dashboard === pendingDash && r.status === "pending");
+    if(!dup){
+      reqs.push({ id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), user: uid, dashboard: pendingDash, ts: Date.now(), status: "pending" });
+      AccessStore.saveRequests(reqs);
+    }
+    showStatus("success", dup ? "Your request is already pending." : "Access request sent ✓", "An administrator will review it.", accStatus);
+    const mail = "mailto:" + AUTHORIZED_EMAILS.join(",") + "?subject=" + encodeURIComponent("Dashboard access request - " + d.name) +
+                 "&body=" + encodeURIComponent("Please grant " + uid + " access to the " + d.name + " dashboard.");
+    accActions.innerHTML = '<div class="fp-sub" style="margin-top:12px;">To speed things up, <a href="' + mail + '">email the administrators</a> as well.</div>';
+  }
+
+  document.getElementById("userContinueBtn").addEventListener("click", verifyUser);
+  document.getElementById("userIdInput").addEventListener("keydown", e => { if(e.key === "Enter") verifyUser(); });
+  document.getElementById("useridBackBtn").addEventListener("click", () => showView("select"));
+  document.getElementById("goAdminBtn").addEventListener("click", () => showView(adminEmail ? "admin" : "adminLogin"));
+
+  document.getElementById("sbSelectBtn").addEventListener("click", () => showView("select"));
+  document.getElementById("sbOverviewBtn").addEventListener("click", () => chooseDashboard("overview"));
+  document.getElementById("sbAnalysisBtn").addEventListener("click", () => chooseDashboard("analysis"));
+  document.getElementById("selectOverviewCard").addEventListener("click", () => chooseDashboard("overview"));
+  document.getElementById("selectAnalysisCard").addEventListener("click", () => chooseDashboard("analysis"));
+  document.getElementById("sbSignOutBtn").addEventListener("click", () => {
+    sessionUser = null; pendingDash = null; state.currentUserEmail = null;
+    try{ sessionStorage.removeItem("excess_user"); }catch(e){}
+    updateSidebarUser();
+    showView("select");
+  });
+
+  /* ============== Admin Panel: dashboard access + requests ============== */
+  const drafts = {};
+  let adminDash = "overview";
+  const sameSet = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+  const say = (el, kind, text) => showStatus(kind === "ok" ? "success" : kind === "err" ? "error" : "info", text, null, el);
+  const isDirty = id => !sameSet(drafts[id] || [], AccessStore.users(id));
+  function initDrafts(){ DASH_IDS.forEach(d => { drafts[d] = AccessStore.users(d); }); }
+
+  document.querySelectorAll(".am-tab").forEach(t => t.addEventListener("click", () => {
+    document.querySelectorAll(".am-tab").forEach(x => x.classList.toggle("on", x === t));
+    ["access", "requests", "file"].forEach(n => document.getElementById("tab-" + n).classList.toggle("hidden", n !== t.dataset.tab));
+    renderAdmin();
+  }));
+
+  function renderAdmin(){
+    document.getElementById("adminDashSeg").innerHTML = DASH_IDS.map(id =>
+      `<button data-id="${id}" class="${id === adminDash ? "on" : ""}">${escapeHtml(DASH[id].name)}${isDirty(id) ? '<span class="am-dot"></span>' : ""}</button>`).join("");
+    const saved = AccessStore.users(adminDash), draft = drafts[adminDash] || [];
+    document.getElementById("addUserDashName").textContent = DASH[adminDash].name;
+    document.getElementById("accessBody").innerHTML = draft.length
+      ? draft.map(u => `<tr><td class="mono">${escapeHtml(u)}</td><td><span class="am-tag ${saved.includes(u) ? "saved" : "new"}">${saved.includes(u) ? "Saved" : "New (unsaved)"}</span></td><td class="r"><button class="btn btn-danger btn-sm" data-del="${escapeAttr(u)}">Delete</button></td></tr>`).join("")
+      : `<tr><td colspan="3" class="am-empty">No users have access to ${escapeHtml(DASH[adminDash].name)} yet.</td></tr>`;
+    const added = draft.filter(u => !saved.includes(u)).length, removed = saved.filter(u => !draft.includes(u)).length;
+    document.getElementById("accessSummary").textContent = isDirty(adminDash) ? `Unsaved changes: ${added} to add, ${removed} to remove.` : "All changes saved.";
+    document.getElementById("saveAccessBtn").disabled = !isDirty(adminDash);
+    document.getElementById("discardBtn").disabled = !isDirty(adminDash);
+    renderRequests();
+  }
+  document.getElementById("adminDashSeg").addEventListener("click", e => {
+    const b = e.target.closest("button"); if(!b) return;
+    adminDash = b.dataset.id; hideStatus(document.getElementById("accessMsg")); renderAdmin();
+  });
+
+  function addUser(){
+    if(!adminEmail) return;
+    const input = document.getElementById("addUserInput"), msg = document.getElementById("accessMsg");
+    const uid = input.value.trim().toLowerCase();
+    if(!isBrandixId(uid)){ say(msg, "err", "Enter a valid Brandix User ID, for example name@brandix.com."); return; }
+    if(AUTHORIZED_EMAILS.includes(uid)){ say(msg, "info", "Administrators already have access to every dashboard."); return; }
+    if(drafts[adminDash].includes(uid)){ say(msg, "info", uid + " is already in this list."); return; }
+    drafts[adminDash].push(uid); input.value = "";
+    say(msg, "info", uid + " added. Click “Save access permissions” to apply."); renderAdmin();
+  }
+  document.getElementById("addUserBtn").addEventListener("click", addUser);
+  document.getElementById("addUserInput").addEventListener("keydown", e => { if(e.key === "Enter") addUser(); });
+  document.getElementById("accessBody").addEventListener("click", e => {
+    const b = e.target.closest("[data-del]"); if(!b || !adminEmail) return;
+    drafts[adminDash] = drafts[adminDash].filter(u => u !== b.dataset.del);
+    say(document.getElementById("accessMsg"), "info", b.dataset.del + " removed. Click “Save access permissions” to apply."); renderAdmin();
+  });
+  document.getElementById("saveAccessBtn").addEventListener("click", () => {
+    if(!adminEmail) return;
+    AccessStore.saveUsers(adminDash, drafts[adminDash]);
+    say(document.getElementById("accessMsg"), "ok", "Access permissions saved ✓"); renderAdmin();
+  });
+  document.getElementById("discardBtn").addEventListener("click", () => {
+    drafts[adminDash] = AccessStore.users(adminDash); hideStatus(document.getElementById("accessMsg")); renderAdmin();
+  });
+
+  function renderRequests(){
+    const pending = AccessStore.requests().filter(r => r.status === "pending");
+    const badge = document.getElementById("accReqCount");
+    badge.textContent = pending.length; badge.classList.toggle("hidden", !pending.length);
+    document.getElementById("requestBody").innerHTML = pending.length
+      ? pending.map(r => `<tr><td class="mono">${escapeHtml(r.user)}</td><td>${escapeHtml((DASH[r.dashboard] || { name: r.dashboard }).name)}</td><td>${escapeHtml(new Date(r.ts).toLocaleString())}</td>
+          <td class="r"><button class="btn btn-ok btn-sm" data-approve="${escapeAttr(r.id)}">Approve</button> <button class="btn btn-danger btn-sm" data-reject="${escapeAttr(r.id)}">Reject</button></td></tr>`).join("")
+      : `<tr><td colspan="4" class="am-empty">No pending access requests.</td></tr>`;
+  }
+  document.getElementById("requestBody").addEventListener("click", e => {
+    const a = e.target.closest("[data-approve]"), r = e.target.closest("[data-reject]");
+    if((!a && !r) || !adminEmail) return;
+    const id = (a || r).dataset.approve || (a || r).dataset.reject;
+    const reqs = AccessStore.requests(), req = reqs.find(x => x.id === id); if(!req) return;
+    req.status = a ? "approved" : "rejected"; AccessStore.saveRequests(reqs);
+    if(a){
+      AccessStore.saveUsers(req.dashboard, AccessStore.users(req.dashboard).concat(req.user));
+      if(drafts[req.dashboard] && !drafts[req.dashboard].includes(req.user)) drafts[req.dashboard].push(req.user);
+    }
+    renderAdmin();
+  });
+  document.getElementById("adminSignOutBtn").addEventListener("click", () => {
+    adminEmail = null; try{ sessionStorage.removeItem("excess_admin"); }catch(e){}
+    showView("select");
+  });
+
+  /* ============== DASHBOARD 1 : Excess Overview ============== */
+  let ovQtyChartInstance = null;
+  let ovValueChartInstance = null;
+
+  document.querySelectorAll(".toggle-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".toggle-btn").forEach(b => b.classList.remove("is-active"));
+      btn.classList.add("is-active");
+      state.overviewCustomer = btn.dataset.customer;
+      refreshOverviewFilters();
+      renderOverview();
+    });
+  });
+
+  state.ovFilters = { lotNo: new Set(), style: new Set(), coNumber: new Set(), poNumber: new Set(), color: new Set() };
+
+  function overviewScopeRows(){
+    let rows = state.baseRecords;
+    if(state.overviewCustomer !== "ALL"){
+      rows = rows.filter(r => r.customer.toUpperCase() === state.overviewCustomer);
+    }
+    return rows;
+  }
+
+  function makeOvField(prefix, key){
+    return createMultiSelect({
+      searchEl: document.getElementById(prefix + "Search"),
+      panelEl: document.getElementById(prefix + "Panel"),
+      badgeEl: document.getElementById(prefix + "Badge"),
+      countLineEl: document.getElementById(prefix + "Count"),
+      listEl: document.getElementById(prefix + "List"),
+      wrapEl: document.getElementById(prefix + "Wrap"),
+      selectedSet: state.ovFilters[key],
+      getOptions: () => uniqueSorted(overviewScopeRows().map(r => r[key])),
+      onChange: () => renderOverview()
+    });
+  }
+  const ovFields = [
+    makeOvField("ovLot", "lotNo"), makeOvField("ovStyle", "style"), makeOvField("ovCo", "coNumber"),
+    makeOvField("ovPo", "poNumber"), makeOvField("ovColor", "color")
+  ];
+  function refreshOverviewFilters(){ ovFields.forEach(f => f.refresh()); }
+
+  function getOverviewFilteredRecords(){
+    let rows = overviewScopeRows();
+    const f = state.ovFilters;
+    if(f.lotNo.size) rows = rows.filter(r => f.lotNo.has(r.lotNo));
+    if(f.style.size) rows = rows.filter(r => f.style.has(r.style));
+    if(f.coNumber.size) rows = rows.filter(r => f.coNumber.has(r.coNumber));
+    if(f.poNumber.size) rows = rows.filter(r => f.poNumber.has(r.poNumber));
+    if(f.color.size) rows = rows.filter(r => f.color.has(r.color));
+    return rows;
+  }
+
+  function renderOverview(){
+    if(!state.records.length){
+      document.getElementById("ovTableBody").innerHTML = "";
+      document.getElementById("ovNoDataNote").classList.remove("hidden");
+      document.getElementById("ovTableWrap").classList.add("hidden");
+      document.getElementById("ovKpiQty").textContent = "0";
+      document.getElementById("ovKpiValue").textContent = "$0";
+      document.querySelector("#view-overview .dash-grid").classList.add("hidden");
+      return;
+    }
+    const rows = getOverviewFilteredRecords();
+    let totalQty = 0, totalValue = 0;
+    const byColor = new Map();
+    rows.forEach(r => {
+      totalQty += r.excessQty;
+      totalValue += r.excessValue;
+      const cur = byColor.get(r.color) || { qty: 0, value: 0 };
+      cur.qty += r.excessQty; cur.value += r.excessValue;
+      byColor.set(r.color, cur);
+    });
+    const colorRows = Array.from(byColor.entries())
+      .map(([color, agg]) => ({ color, qty: agg.qty, value: agg.value }))
+      .sort((a,b) => b.qty - a.qty);
+
+    document.getElementById("ovKpiQty").textContent = fmtInt(totalQty);
+    document.getElementById("ovKpiValue").textContent = "$" + fmtDec(totalValue);
+    const subLabel = state.overviewCustomer === "ALL" ? "PVH + Harper Wilde" : state.overviewCustomer;
+    document.getElementById("ovKpiQtySub").textContent = subLabel;
+    document.getElementById("ovKpiValueSub").textContent = subLabel;
+
+    const tbody = document.getElementById("ovTableBody");
+    const noDataNote = document.getElementById("ovNoDataNote");
+    const tableWrap = document.getElementById("ovTableWrap");
+    if(rows.length === 0){
+      tbody.innerHTML = "";
+      noDataNote.classList.remove("hidden");
+      tableWrap.classList.add("hidden");
+    }else{
+      noDataNote.classList.add("hidden");
+      tableWrap.classList.remove("hidden");
+      tbody.innerHTML = rows.slice(0, 2000).map((r,i) => `
+        <tr class="anim-row" style="animation-delay:${Math.min(i*0.01,0.3)}s">
+          <td>${escapeHtml(r.lotNo || "-")}</td>
+          <td>${escapeHtml(r.style || "-")}</td>
+          <td>${escapeHtml(r.coNumber || "-")}</td>
+          <td>${escapeHtml(r.poNumber || "-")}</td>
+          <td>${escapeHtml(r.color)}</td>
+          <td class="num">${fmtInt(r.excessQty)}</td>
+          <td class="num">$${fmtDec(r.excessValue)}</td>
+        </tr>`).join("");
+    }
+
+    renderOverviewCharts(colorRows);
+  }
+
+  function renderBarsFallback(boxId, rows, key, color, fmt){
+    const box = document.getElementById(boxId);
+    const max = Math.max(1, ...rows.map(r => r[key]));
+    box.style.height = "auto";
+    box.innerHTML = rows.map(r => `<div class="fb-row" title="${escapeAttr(r.color)}: ${escapeAttr(fmt(r[key]))}"><span class="fb-label">${escapeHtml(r.color)}</span><div class="fb-track"><div class="fb-bar" style="width:${Math.max(2, r[key] / max * 100)}%; background:${color}"></div></div><span class="fb-val">${fmt(r[key])}</span></div>`).join("");
+  }
+
+  function renderOverviewCharts(colorRows){
+    const labels = colorRows.map(r => r.color);
+    const qtyData = colorRows.map(r => r.qty);
+    const valueData = colorRows.map(r => r.value);
+    if(ovQtyChartInstance){ ovQtyChartInstance.destroy(); ovQtyChartInstance = null; }
+    if(ovValueChartInstance){ ovValueChartInstance.destroy(); ovValueChartInstance = null; }
+    document.querySelector("#view-overview .dash-grid").classList.toggle("hidden", colorRows.length === 0);
+    if(!colorRows.length) return;
+    if(!window.Chart){
+      renderBarsFallback("ovQtyChartBox", colorRows, "qty", "#B8752E", fmtInt);
+      renderBarsFallback("ovValueChartBox", colorRows, "value", "#2F6F6B", v => "$" + fmtDec(v));
+      return;
+    }
+
+    const baseOptions = {
+      responsive:true, maintainAspectRatio:false,
+      animation:{ duration:600, easing:"easeOutQuart" },
+      plugins:{ legend:{display:false}, tooltip:{ backgroundColor:"#1B2430", padding:10, cornerRadius:6, displayColors:false } },
+      scales:{
+        x:{ ticks:{ font:{size:11}, autoSkip:false, maxRotation:40, minRotation: labels.length>6?30:0 }, grid:{display:false} },
+        y:{ beginAtZero:true, grid:{color:"#EEF0F2"} }
+      }
+    };
+
+    ovQtyChartInstance = new Chart(document.getElementById("ovQtyChart"), {
+      type:"bar",
+      data:{ labels, datasets:[{ data:qtyData, backgroundColor:"#B8752E", borderRadius:4, maxBarThickness:110, barPercentage:0.72, categoryPercentage:0.85 }]},
+      options:{ ...baseOptions, plugins:{ ...baseOptions.plugins, tooltip:{ ...baseOptions.plugins.tooltip, callbacks:{ label:(ctx)=> `Excess Qty: ${fmtInt(ctx.parsed.y)}` } } } }
+    });
+    ovValueChartInstance = new Chart(document.getElementById("ovValueChart"), {
+      type:"bar",
+      data:{ labels, datasets:[{ data:valueData, backgroundColor:"#2F6F6B", borderRadius:4, maxBarThickness:110, barPercentage:0.72, categoryPercentage:0.85 }]},
+      options:{ ...baseOptions, plugins:{ ...baseOptions.plugins, tooltip:{ ...baseOptions.plugins.tooltip, callbacks:{ label:(ctx)=> `Excess Value: $${fmtDec(ctx.parsed.y)}` } } } }
+    });
+  }
+
+  /* ============== Generic multi-select field factory (page 3) ============== */
+  function createMultiSelect(cfg){
+    // cfg: {searchEl, panelEl, badgeEl, countLineEl, listEl, wrapEl, selectedSet, getOptions, onChange}
+    let currentOptions = [];
+
+    function render(query){
+      currentOptions = cfg.getOptions();
+      // prune selections that are no longer valid
+      Array.from(cfg.selectedSet).forEach(v => { if(!currentOptions.includes(v)) cfg.selectedSet.delete(v); });
+
+      const q = (query||"").trim().toLowerCase();
+      const filtered = q ? currentOptions.filter(v => v.toLowerCase().includes(q)) : currentOptions;
+
+      if(currentOptions.length === 0){
+        cfg.panelEl.innerHTML = '<div class="ms-empty">No values available for the current selection.</div>';
+      }else{
+        let html = `<div class="ms-actions-row"><a data-action="select-all">Select all shown</a><a data-action="clear-all">Clear all</a></div>`;
+        if(filtered.length === 0){
+          html += '<div class="ms-empty">No matches found.</div>';
+        }else{
+          filtered.forEach(val => {
+            const checked = cfg.selectedSet.has(val);
+            html += `<label class="ms-option"><input type="checkbox" data-val="${escapeAttr(val)}" ${checked?"checked":""}/><span>${escapeHtml(val)}</span></label>`;
+          });
+        }
+        cfg.panelEl.innerHTML = html;
+
+        cfg.panelEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.addEventListener("change", () => {
+            const val = cb.getAttribute("data-val");
+            if(cb.checked) cfg.selectedSet.add(val); else cfg.selectedSet.delete(val);
+            renderSelected();
+            cfg.onChange();
+          });
+        });
+        const selAll = cfg.panelEl.querySelector('[data-action="select-all"]');
+        const clrAll = cfg.panelEl.querySelector('[data-action="clear-all"]');
+        if(selAll) selAll.addEventListener("click", () => {
+          filtered.forEach(v => cfg.selectedSet.add(v));
+          render(cfg.searchEl.value);
+          renderSelected();
+          cfg.onChange();
+        });
+        if(clrAll) clrAll.addEventListener("click", () => {
+          cfg.selectedSet.clear();
+          render(cfg.searchEl.value);
+          renderSelected();
+          cfg.onChange();
+        });
+      }
+      renderSelected();
+    }
+
+    function renderSelected(){
+      const n = cfg.selectedSet.size;
+      cfg.badgeEl.textContent = n + " selected";
+      cfg.countLineEl.textContent = n === 0
+        ? "No values selected yet."
+        : `${n} selected out of ${currentOptions.length} available.`;
+      cfg.listEl.innerHTML = "";
+      cfg.selectedSet.forEach(val => {
+        const chip = document.createElement("div");
+        chip.className = "ms-chip";
+        chip.innerHTML = `<span title="${escapeAttr(val)}">${escapeHtml(val)}</span><button aria-label="Remove">&times;</button>`;
+        chip.querySelector("button").addEventListener("click", () => {
+          cfg.selectedSet.delete(val);
+          renderSelected();
+          render(cfg.searchEl.value);
+          cfg.onChange();
+        });
+        cfg.listEl.appendChild(chip);
+      });
+    }
+
+    cfg.searchEl.addEventListener("input", () => { render(cfg.searchEl.value); cfg.panelEl.classList.add("is-open"); });
+    cfg.searchEl.addEventListener("focus", () => { render(cfg.searchEl.value); cfg.panelEl.classList.add("is-open"); });
+    document.addEventListener("click", (e) => {
+      if(!cfg.wrapEl.contains(e.target)) cfg.panelEl.classList.remove("is-open");
+    });
+
+    return { refresh: () => render(cfg.searchEl.value), getSelected: () => cfg.selectedSet };
+  }
+
+  function uniqueSorted(arr){
+    return Array.from(new Set(arr.filter(Boolean))).sort((a,b) => a.localeCompare(b));
+  }
+
+  const piField = createMultiSelect({
+    searchEl: document.getElementById("piSearch"),
+    panelEl: document.getElementById("piPanel"),
+    badgeEl: document.getElementById("piBadge"),
+    countLineEl: document.getElementById("piCountLine"),
+    listEl: document.getElementById("piSelectedList"),
+    wrapEl: document.getElementById("piWrap"),
+    selectedSet: state.selectedParentItems,
+    getOptions: () => uniqueSorted(state.page2Records.map(r => r.parentItem)),
+    onChange: () => { colorField.refresh(); sizeField.refresh(); updatePage3NextState(); }
+  });
+
+  const colorField = createMultiSelect({
+    searchEl: document.getElementById("colorSearch"),
+    panelEl: document.getElementById("colorPanel"),
+    badgeEl: document.getElementById("colorBadge"),
+    countLineEl: document.getElementById("colorCountLine"),
+    listEl: document.getElementById("colorSelectedList"),
+    wrapEl: document.getElementById("colorWrap"),
+    selectedSet: state.selectedColors,
+    getOptions: () => {
+      const base = state.selectedParentItems.size
+        ? state.page2Records.filter(r => state.selectedParentItems.has(r.parentItem))
+        : state.page2Records;
+      return uniqueSorted(base.map(r => r.color));
+    },
+    onChange: () => { sizeField.refresh(); updatePage3NextState(); }
+  });
+
+  const sizeField = createMultiSelect({
+    searchEl: document.getElementById("sizeSearch"),
+    panelEl: document.getElementById("sizePanel"),
+    badgeEl: document.getElementById("sizeBadge"),
+    countLineEl: document.getElementById("sizeCountLine"),
+    listEl: document.getElementById("sizeSelectedList"),
+    wrapEl: document.getElementById("sizeWrap"),
+    selectedSet: state.selectedSizes,
+    getOptions: () => {
+      let base = state.selectedParentItems.size
+        ? state.page2Records.filter(r => state.selectedParentItems.has(r.parentItem))
+        : state.page2Records;
+      base = state.selectedColors.size
+        ? base.filter(r => state.selectedColors.has(r.color))
+        : base;
+      return uniqueSorted(base.map(r => r.size));
+    },
+    onChange: () => { updatePage3NextState(); }
+  });
+
+  function updatePage3NextState(){
+    nextFrom3Btn.disabled = !(state.selectedParentItems.size && state.selectedColors.size && state.selectedSizes.size);
+  }
+
+  function renderPage3(){
+    const note = document.getElementById("page3Note");
+    if(!state.records.length){
+      note.textContent = "No report is loaded yet. Ask an administrator to upload the inventory report in the Admin Panel.";
+      note.classList.remove("hidden");
+    }else if(!state.page2Records.length){
+      note.textContent = "No PVH or HARPER WILDE records with Procurement Group Thread were found in this report.";
+      note.classList.remove("hidden");
+    }else{
+      note.classList.add("hidden");
+    }
+    piField.refresh();
+    colorField.refresh();
+    sizeField.refresh();
+    updatePage3NextState();
+  }
+
+  document.getElementById("backTo2Btn").addEventListener("click", () => showView("select"));
+  const nextFrom3Btn = document.getElementById("nextFrom3Btn");
+  nextFrom3Btn.addEventListener("click", () => {
+    state.page3Records = state.page2Records.filter(r =>
+      state.selectedParentItems.has(r.parentItem) &&
+      state.selectedColors.has(r.color) &&
+      state.selectedSizes.has(r.size)
+    );
+    goToPage(4);
+  });
+
+  /* ============== PAGE 4 : Dashboard ============== */
+  let qtyChartInstance = null;
+  let valueChartInstance = null;
+  let dashboardAggByColor = [];
+
+  function renderDashboard(){
+    const finalRecords = state.page3Records;
+
+    const byColor = new Map();
+    let totalQty = 0, totalValue = 0;
+    finalRecords.forEach(r => {
+      totalQty += r.excessQty;
+      totalValue += r.excessValue;
+      const cur = byColor.get(r.color) || {qty:0, value:0};
+      cur.qty += r.excessQty;
+      cur.value += r.excessValue;
+      byColor.set(r.color, cur);
+    });
+
+    const rows = Array.from(byColor.entries())
+      .map(([color, agg]) => ({color, qty:agg.qty, value:agg.value}))
+      .sort((a,b) => b.qty - a.qty);
+    dashboardAggByColor = rows;
+
+    document.getElementById("kpiQty").textContent = fmtInt(totalQty);
+    document.getElementById("kpiValue").textContent = fmtDec(totalValue);
+    document.getElementById("kpiItems").textContent = state.selectedParentItems.size.toLocaleString();
+    document.getElementById("kpiColorsSel").textContent = state.selectedColors.size.toLocaleString();
+    document.getElementById("kpiSizesSel").textContent = state.selectedSizes.size.toLocaleString();
+
+    const recap = document.getElementById("filtersRecap");
+    let recapHtml = "";
+    if(state.selectedCustomers.size) recapHtml += `<span class="recap-chip">Customer: <b>${Array.from(state.selectedCustomers).join(", ")}</b></span>`;
+    if(state.selectedProcGroups.size) recapHtml += `<span class="recap-chip">Procurement Group: <b>${Array.from(state.selectedProcGroups).join(", ")}</b></span>`;
+    recapHtml += `<span class="recap-chip">Parent Items: <b>${state.selectedParentItems.size}</b></span>`;
+    recapHtml += `<span class="recap-chip">Colors: <b>${state.selectedColors.size}</b></span>`;
+    recapHtml += `<span class="recap-chip">Sizes: <b>${state.selectedSizes.size}</b></span>`;
+    recap.innerHTML = recapHtml;
+
+    const tbody = document.getElementById("summaryTableBody");
+    const noDataNote = document.getElementById("noDataNote");
+    const tableWrap = document.getElementById("summaryTableWrap");
+    if(rows.length === 0){
+      tbody.innerHTML = "";
+      noDataNote.classList.remove("hidden");
+      tableWrap.classList.add("hidden");
+    }else{
+      noDataNote.classList.add("hidden");
+      tableWrap.classList.remove("hidden");
+      tbody.innerHTML = rows.map((r,i) => `
+        <tr class="anim-row" style="animation-delay:${Math.min(i*0.02,0.4)}s">
+          <td class="color-cell"><span class="color-dot" style="background:${colorSwatch(r.color)}"></span>${escapeHtml(r.color)}</td>
+          <td class="num">${fmtInt(r.qty)}</td>
+          <td class="num">${fmtDec(r.value)}</td>
+        </tr>`).join("");
+    }
+    document.getElementById("tableFootQty").textContent = fmtInt(totalQty);
+    document.getElementById("tableFootValue").textContent = fmtDec(totalValue);
+
+    renderCharts(rows);
+  }
+
+  function colorSwatch(name){
+    let hash = 0;
+    for(let i=0;i<name.length;i++) hash = name.charCodeAt(i) + ((hash<<5)-hash);
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 55%, 58%)`;
+  }
+
+  function renderCharts(rows){
+    const labels = rows.map(r => r.color);
+    const qtyData = rows.map(r => r.qty);
+    const valueData = rows.map(r => r.value);
+
+    if(qtyChartInstance){ qtyChartInstance.destroy(); qtyChartInstance = null; }
+    if(valueChartInstance){ valueChartInstance.destroy(); valueChartInstance = null; }
+    document.querySelector("#page-4 .dash-grid").classList.toggle("hidden", rows.length === 0);
+    if(!rows.length) return;
+    if(!window.Chart){
+      renderBarsFallback("qtyChartBox", rows, "qty", "#B8752E", fmtInt);
+      renderBarsFallback("valueChartBox", rows, "value", "#2F6F6B", fmtDec);
+      return;
+    }
+
+    const baseOptions = {
+      responsive:true, maintainAspectRatio:false,
+      animation:{ duration:650, easing:"easeOutQuart" },
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:"#1B2430", padding:10, cornerRadius:6, displayColors:false,
+          titleFont:{size:12.5, weight:"600"}, bodyFont:{size:12.5}
+        }
+      },
+      scales:{
+        x:{ ticks:{ font:{size:11}, autoSkip:false, maxRotation:40, minRotation: labels.length>6?30:0 }, grid:{display:false} },
+        y:{ beginAtZero:true, grid:{color:"#EEF0F2"} }
+      }
+    };
+
+    qtyChartInstance = new Chart(document.getElementById("qtyChart"), {
+      type:"bar",
+      data:{ labels, datasets:[{ label:"Excess Qty", data:qtyData, backgroundColor:"#B8752E", borderRadius:4, maxBarThickness:110, barPercentage:0.72, categoryPercentage:0.85 }]},
+      options:{ ...baseOptions, plugins:{ ...baseOptions.plugins, tooltip:{ ...baseOptions.plugins.tooltip, callbacks:{ label:(ctx)=> `Excess Qty: ${fmtInt(ctx.parsed.y)}` } } } }
+    });
+
+    valueChartInstance = new Chart(document.getElementById("valueChart"), {
+      type:"bar",
+      data:{ labels, datasets:[{ label:"Excess Value", data:valueData, backgroundColor:"#2F6F6B", borderRadius:4, maxBarThickness:110, barPercentage:0.72, categoryPercentage:0.85 }]},
+      options:{ ...baseOptions, plugins:{ ...baseOptions.plugins, tooltip:{ ...baseOptions.plugins.tooltip, callbacks:{ label:(ctx)=> `Excess Value: ${fmtDec(ctx.parsed.y)}` } } } }
+    });
+  }
+
+  document.getElementById("backTo3Btn").addEventListener("click", () => goToPage(3));
+  document.getElementById("startOverBtn").addEventListener("click", () => showView("select"));
+  document.getElementById("goToRequestBtn").addEventListener("click", () => goToPage(5));
+
+  /* ============== PAGE 5 : Excess Request (multi-color) ============== */
+  const reqSelections = new Map(); // color -> requested qty (string)
+  let requestInFlight = false;
+
+  function joinSet(set){ const a = Array.from(set); return a.length ? a.join(", ") : "-"; }
+
+  const REQUEST_ACCOUNTS = ["FRANK DANDY","HARPER WILDE","KNIX WEAR INC.","LANE BRYANT","MYLK STUDIOS INC","PUMA SPORTS INDIA","PVH","Spanx LLC","TOMMY JOHN","VS&CO","WOXER INC."];
+  const reqAccounts = new Set();
+
+  function renderAccountPanel(){
+    const panel = document.getElementById("reqAccountPanel");
+    panel.innerHTML = `<div class="ms-actions-row"><a data-act="all">Select all</a><a data-act="none">Clear all</a></div>` +
+      REQUEST_ACCOUNTS.map(a => `<label class="ms-option"><input type="checkbox" data-val="${escapeAttr(a)}" ${reqAccounts.has(a) ? "checked" : ""}/><span>${escapeHtml(a)}</span></label>`).join("");
+    panel.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.addEventListener("change", () => {
+      const v = cb.getAttribute("data-val");
+      if(cb.checked) reqAccounts.add(v); else reqAccounts.delete(v);
+      refreshAccountUi();
+    }));
+    panel.querySelector('[data-act="all"]').addEventListener("click", () => { REQUEST_ACCOUNTS.forEach(a => reqAccounts.add(a)); renderAccountPanel(); refreshAccountUi(); });
+    panel.querySelector('[data-act="none"]').addEventListener("click", () => { reqAccounts.clear(); renderAccountPanel(); refreshAccountUi(); });
+  }
+
+  function refreshAccountUi(){
+    const sel = REQUEST_ACCOUNTS.filter(a => reqAccounts.has(a));
+    document.getElementById("reqAccountBadge").textContent = sel.length + " selected";
+    document.getElementById("reqAccountDisplay").value = sel.join(", ");
+    const chips = document.getElementById("reqAccountChips");
+    chips.innerHTML = "";
+    sel.forEach(a => {
+      const chip = document.createElement("div");
+      chip.className = "ms-chip";
+      chip.innerHTML = `<span>${escapeHtml(a)}</span><button aria-label="Remove">&times;</button>`;
+      chip.querySelector("button").addEventListener("click", () => { reqAccounts.delete(a); renderAccountPanel(); refreshAccountUi(); });
+      chips.appendChild(chip);
+    });
+    updateRequestSummary();
+  }
+
+  document.getElementById("reqAccountRow").addEventListener("click", () => {
+    document.getElementById("reqAccountPanel").classList.toggle("is-open");
+  });
+  document.addEventListener("click", (e) => {
+    if(!document.getElementById("reqAccountWrap").contains(e.target)) document.getElementById("reqAccountPanel").classList.remove("is-open");
+  });
+  document.getElementById("reqUserName").addEventListener("input", () => updateRequestSummary());
+  document.getElementById("reqSku").addEventListener("input", () => updateRequestSummary());
+
+  function getRequestUser(){
+    return {
+      name: document.getElementById("reqUserName").value.trim(),
+      accounts: REQUEST_ACCOUNTS.filter(a => reqAccounts.has(a)),
+      skus: Array.from(new Set(document.getElementById("reqSku").value.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)))
+    };
+  }
+
+  function buildColorInfo(){
+    const m = new Map();
+    state.page3Records.forEach(r => {
+      let c = m.get(r.color);
+      if(!c){ c = { color:r.color, qty:0, value:0, items:new Set() }; m.set(r.color, c); }
+      if(r.itemCode) c.items.add(r.itemCode);
+      c.qty += r.excessQty; c.value += r.excessValue;
+    });
+    return m;
+  }
+
+  function parseQty(raw){
+    const t = (raw || "").trim();
+    return t === "" ? NaN : parseInt(t, 10);
+  }
+
+  function rowError(info, raw){
+    if((raw || "").trim() === "") return "";
+    const q = parseQty(raw);
+    if(!isFinite(q) || q <= 0) return "Enter a quantity greater than zero.";
+    if(q > info.qty) return "Requested quantity cannot exceed available excess quantity.";
+    return "";
+  }
+
+  function renderRequestPage(){
+    document.getElementById("requestFormView").classList.remove("hidden");
+    document.getElementById("requestSuccessView").classList.add("hidden");
+    reqSelections.clear();
+    reqAccounts.clear();
+    document.getElementById("reqUserName").value = "";
+    document.getElementById("reqSku").value = "";
+    document.getElementById("reqColorSearch").value = "";
+    renderAccountPanel();
+    refreshAccountUi();
+    hideStatus(document.getElementById("reqStatusMsg"));
+
+    const info = buildColorInfo();
+    const allItems = new Set();
+    let totalQty = 0, totalValue = 0;
+    state.page3Records.forEach(r => {
+      totalQty += r.excessQty; totalValue += r.excessValue;
+      if(r.itemCode) allItems.add(r.itemCode);
+    });
+
+    document.getElementById("revItems").textContent = joinSet(allItems);
+    document.getElementById("revCustomer").textContent = state.selectedCustomers.size ? Array.from(state.selectedCustomers).join(", ") : "All";
+    document.getElementById("revProcGroup").textContent = state.selectedProcGroups.size ? Array.from(state.selectedProcGroups).join(", ") : "All";
+    document.getElementById("revParentItems").textContent = state.selectedParentItems.size === 1
+      ? Array.from(state.selectedParentItems)[0] : `${state.selectedParentItems.size} items selected`;
+    document.getElementById("revSizes").textContent = Array.from(state.selectedSizes).join(", ") || "-";
+    document.getElementById("revTotalQty").textContent = fmtInt(totalQty);
+    document.getElementById("revTotalValue").textContent = fmtDec(totalValue);
+    document.getElementById("sumEmail").textContent = CONFIG.REQUEST_EMAIL;
+
+    renderColorTable();
+    updateRequestSummary();
+  }
+
+  function renderColorTable(){
+    const info = buildColorInfo();
+    const q = document.getElementById("reqColorSearch").value.trim().toLowerCase();
+    const colors = Array.from(info.keys()).sort((a,b) => a.localeCompare(b)).filter(c => !q || c.toLowerCase().includes(q));
+    const body = document.getElementById("reqColorBody");
+    document.getElementById("reqNoColors").classList.toggle("hidden", info.size > 0);
+
+    body.innerHTML = colors.map(color => {
+      const c = info.get(color);
+      const checked = reqSelections.has(color);
+      const qty = checked ? reqSelections.get(color) : "";
+      return `<tr data-color="${escapeAttr(color)}" class="${checked ? "is-selected" : ""}">
+        <td><input type="checkbox" class="rc-check" ${checked ? "checked" : ""} /></td>
+        <td class="rc-color">${escapeHtml(color)}</td>
+        <td class="rc-text">${escapeHtml(joinSet(c.items))}</td>
+        <td class="num">${fmtInt(c.qty)}</td>
+        <td><input type="text" inputmode="numeric" class="qty-input rc-qty" placeholder="Qty" value="${escapeAttr(qty)}" ${checked ? "" : "disabled"} />
+            <div class="field-error rc-err"></div></td>
+      </tr>`;
+    }).join("");
+
+    body.querySelectorAll("tr").forEach(tr => {
+      const color = tr.getAttribute("data-color");
+      const check = tr.querySelector(".rc-check");
+      const qtyEl = tr.querySelector(".rc-qty");
+      const errEl = tr.querySelector(".rc-err");
+      const showRowError = () => {
+        const msg = reqSelections.has(color) ? rowError(info.get(color), qtyEl.value) : "";
+        qtyEl.classList.toggle("has-error", !!msg);
+        errEl.textContent = msg;
+        errEl.classList.toggle("is-visible", !!msg);
+      };
+      check.addEventListener("change", () => {
+        if(check.checked){ reqSelections.set(color, qtyEl.value || ""); qtyEl.disabled = false; qtyEl.focus(); }
+        else { reqSelections.delete(color); qtyEl.disabled = true; qtyEl.value = ""; }
+        tr.classList.toggle("is-selected", check.checked);
+        showRowError();
+        updateRequestSummary();
+      });
+      qtyEl.addEventListener("input", () => {
+        qtyEl.value = qtyEl.value.replace(/[^0-9]/g, "");
+        reqSelections.set(color, qtyEl.value);
+        showRowError();
+        updateRequestSummary();
+      });
+      showRowError();
+    });
+  }
+
+  document.getElementById("reqColorSearch").addEventListener("input", renderColorTable);
+
+  function getRequestLines(){
+    const info = buildColorInfo();
+    const lines = [];
+    reqSelections.forEach((rawQty, color) => {
+      const c = info.get(color);
+      if(!c) return;
+      const qty = parseQty(rawQty);
+      const valid = !rowError(c, rawQty) && isFinite(qty) && qty > 0;
+      lines.push({
+        color, items: joinSet(c.items),
+        avail: c.qty, qty: isFinite(qty) ? qty : 0, valid,
+        estValue: c.qty > 0 && isFinite(qty) ? c.value * (qty / c.qty) : 0
+      });
+    });
+    return lines.sort((a,b) => a.color.localeCompare(b.color));
+  }
+
+  function updateRequestSummary(){
+    const lines = getRequestLines();
+    const info = buildColorInfo();
+    const items = new Set();
+    const source = lines.length ? lines.map(l => info.get(l.color)) : Array.from(info.values());
+    source.forEach(c => { c.items.forEach(s => items.add(s)); });
+    document.getElementById("sumItem").textContent = joinSet(items);
+
+    document.getElementById("sumCustomer").textContent = state.selectedCustomers.size ? Array.from(state.selectedCustomers).join(", ") : "All";
+    document.getElementById("sumProcGroup").textContent = state.selectedProcGroups.size ? Array.from(state.selectedProcGroups).join(", ") : "All";
+    document.getElementById("sumParentItem").textContent = state.selectedParentItems.size === 1
+      ? Array.from(state.selectedParentItems)[0] : `${state.selectedParentItems.size} items`;
+
+    const body = document.getElementById("sumLinesBody");
+    if(lines.length === 0){
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--ink-faint); padding:14px;">No colors selected yet.</td></tr>';
+    }else{
+      body.innerHTML = lines.map(l => `<tr>
+        <td>${escapeHtml(l.color)}</td>
+        <td class="num">${fmtInt(l.avail)}</td>
+        <td class="num">${l.qty ? fmtInt(l.qty) : "-"}</td>
+        <td class="num">${l.qty ? fmtDec(l.estValue) : "-"}</td></tr>`).join("");
+    }
+    const tot = lines.reduce((a,l) => ({ avail:a.avail+l.avail, qty:a.qty+(l.valid?l.qty:0), val:a.val+(l.valid?l.estValue:0) }), {avail:0, qty:0, val:0});
+    document.getElementById("sumTotalAvail").textContent = lines.length ? fmtInt(tot.avail) : "-";
+    document.getElementById("sumTotalReq").textContent = lines.length ? fmtInt(tot.qty) : "-";
+    document.getElementById("sumTotalValue").textContent = lines.length ? fmtDec(tot.val) : "-";
+
+    const ru = getRequestUser();
+    document.getElementById("sumUser").textContent = ru.name || "-";
+    document.getElementById("sumAccount").textContent = ru.accounts.length ? ru.accounts.join(", ") : "-";
+    document.getElementById("sumSku").textContent = ru.skus.length ? ru.skus.join(", ") : "-";
+
+    const linesOk = lines.length > 0 && lines.every(l => l.valid);
+    const missing = [];
+    if(!linesOk) missing.push("a color with a valid requested quantity");
+    if(!ru.name) missing.push("the request user name");
+    if(!ru.accounts.length) missing.push("at least one request account");
+    document.getElementById("reqHint").textContent = missing.length ? "Still needed: " + missing.join(", ") + "." : "";
+    document.getElementById("sendRequestBtn").disabled = missing.length > 0 || requestInFlight;
+  }
+
+  const MAIL_GREEN = "#1F7A4D", MAIL_TINT = "#E6F2EA", MAIL_BORDER = "#7FA88E";
+
+  function buildRequestEmail(){
+    const lines = getRequestLines();
+    const ru = getRequestUser();
+    const procGroup = state.selectedProcGroups.size ? Array.from(state.selectedProcGroups).join(", ") : "All";
+    const parentItem = state.selectedParentItems.size === 1
+      ? Array.from(state.selectedParentItems)[0] : Array.from(state.selectedParentItems).join(", ");
+    const accountText = ru.accounts.join(", ");
+    const skuText = ru.skus.length ? ru.skus.join("\n") : "-";
+    const when = new Date();
+    const dateStr = when.toLocaleDateString(), timeStr = when.toLocaleTimeString();
+    const totalReq = lines.reduce((a,l) => a + l.qty, 0);
+    const totalVal = lines.reduce((a,l) => a + l.estValue, 0);
+
+    const fieldsFor = l => [
+      ["Procurement Group", procGroup],
+      ["Parent Item", parentItem],
+      ["Item Code", l.items],
+      ["Color", l.color],
+      ["Available Excess Qty", fmtInt(l.avail)],
+      ["Requested Qty", fmtInt(l.qty)],
+      ["Est. Excess Value ($)", fmtDec(l.estValue)],
+      ["Request User Name", ru.name],
+      ["Request Account", accountText],
+      ["Allocate for SKU(s)", skuText]
+    ];
+    const fieldSets = lines.map((l, i) => ({ title: `Request ${i+1} of ${lines.length} - ${l.color}`, rows: fieldsFor(l) }));
+    const totals = [["Total Requested Qty", fmtInt(totalReq)], ["Total Est. Excess Value ($)", fmtDec(totalVal)]];
+    const cell = v => escapeHtml(v).replace(/\n/g, "<br>");
+
+    const tdL = `style="padding:9px 12px; border:1px solid ${MAIL_BORDER}; background:${MAIL_TINT}; font-size:13px; font-weight:600; width:42%;"`;
+    const tdV = `style="padding:9px 12px; border:1px solid ${MAIL_BORDER}; font-size:13px;"`;
+    const blocks = fieldSets.map(s => `
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:560px; margin-bottom:22px;">
+        <tr><td colspan="2" style="padding:10px 12px; background:${MAIL_GREEN}; color:#ffffff; font-size:13px; font-weight:700;">${escapeHtml(s.title)}</td></tr>
+        ${s.rows.map(([k,v]) => `<tr><td ${tdL}>${escapeHtml(k)}</td><td ${tdV}>${cell(v)}</td></tr>`).join("")}
+      </table>`).join("");
+
+    const html = `<div style="font-family:Segoe UI, Arial, sans-serif; color:#1B2430;">
+      <h2 style="margin:0 0 12px;">Excess Quantity Request</h2>
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom:20px;">
+        <tr><td ${tdL}>Request Date</td><td ${tdV}>${escapeHtml(dateStr)}</td></tr>
+        <tr><td ${tdL}>Request Time</td><td ${tdV}>${escapeHtml(timeStr)}</td></tr>
+      </table>
+      ${blocks}
+      <table cellpadding="0" cellspacing="0" style="border-collapse:collapse; width:100%; max-width:560px;">
+        ${totals.map(([k,v]) => `<tr><td ${tdL}>${escapeHtml(k)}</td><td ${tdV}><b>${escapeHtml(v)}</b></td></tr>`).join("")}
+      </table>
+      <p style="margin-top:18px; font-size:12px; color:#5B6472;">The same details are attached as a PDF. Sent from the Brandix Excess Management System.</p></div>`;
+
+    const textBlocks = fieldSets.map(s =>
+      [s.title.toUpperCase(), "------------------------------"]
+        .concat(s.rows.map(([k,v]) => `${k}: ${String(v).replace(/\n/g, ", ")}`)).join("\r\n"));
+    const text = ["EXCESS QUANTITY REQUEST", `Request Date: ${dateStr}`, `Request Time: ${timeStr}`, ""]
+      .concat([textBlocks.join("\r\n\r\n")])
+      .concat([""].concat(totals.map(([k,v]) => `${k}: ${v}`))).join("\r\n");
+
+    return { subject: "Excess Quantity Request", html, text, lines, totalReq, fieldSets, totals, meta: { dateStr, timeStr }, userName: ru.name };
+  }
+
+  function safeFileBase(name){
+    return (name || "").replace(/[\\/:*?"<>|]+/g, "").replace(/\s+/g, " ").trim() || "Excess Request";
+  }
+
+  // PDF copy of the request details; the file is named after the Request User Name.
+  function buildRequestPdf(email){
+    if(!(window.jspdf && window.jspdf.jsPDF)) return null;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+    const M = 40, labelW = 190, valueW = W - 2 * M - labelW;
+    const GREEN = [31,122,77], TINT = [230,242,234], BORDER = [127,168,142];
+    let y = M;
+    const ensure = need => { if(y + need > H - M){ doc.addPage(); y = M; } };
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(27,36,48);
+    doc.text("Excess Quantity Request", M, y + 14); y += 32;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(91,100,114);
+    doc.text(`Request Date: ${email.meta.dateStr}     Request Time: ${email.meta.timeStr}`, M, y); y += 24;
+
+    const drawBlock = (title, rows) => {
+      ensure(24 + 30);
+      doc.setFillColor(...GREEN); doc.rect(M, y, W - 2 * M, 24, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica", "bold"); doc.setFontSize(11);
+      doc.text(title, M + 10, y + 16); y += 24;
+      rows.forEach(([k, v]) => {
+        const valueLines = doc.splitTextToSize(String(v === undefined || v === "" ? "-" : v), valueW - 16);
+        const rowH = Math.max(22, valueLines.length * 13 + 10);
+        ensure(rowH);
+        doc.setFillColor(...TINT); doc.rect(M, y, labelW, rowH, "F");
+        doc.setDrawColor(...BORDER); doc.rect(M, y, labelW, rowH); doc.rect(M + labelW, y, valueW, rowH);
+        doc.setTextColor(27,36,48); doc.setFontSize(10);
+        doc.setFont("helvetica", "bold"); doc.text(String(k), M + 8, y + 15);
+        doc.setFont("helvetica", "normal"); doc.text(valueLines, M + labelW + 8, y + 15);
+        y += rowH;
+      });
+      y += 18;
+    };
+
+    email.fieldSets.forEach(s => drawBlock(s.title, s.rows));
+    drawBlock("Totals", email.totals);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(91,100,114);
+    ensure(20); doc.text("Sent from the Brandix Excess Management System.", M, y);
+
+    const fileName = safeFileBase(email.userName) + ".pdf";
+    const base64 = doc.output("datauristring").split(",")[1];
+    return { doc, fileName, base64 };
+  }
+
+  function wrap76(s){ return s.replace(/(.{76})/g, "$1\r\n"); }
+  function downloadBlob(blob, name){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  // An .eml file with "X-Unsent: 1" opens in Outlook as an editable draft that already
+  // contains the table and the attached PDF.
+  function downloadEmlDraft(email, pdf){
+    const boundary = "----=_Part_" + Date.now();
+    const htmlB64 = wrap76(btoa(unescape(encodeURIComponent(email.html))));
+    const parts = [
+      "X-Unsent: 1", `To: ${CONFIG.REQUEST_EMAIL}`, `Subject: ${email.subject}`, "MIME-Version: 1.0",
+      `Content-Type: multipart/mixed; boundary="${boundary}"`, "",
+      `--${boundary}`, "Content-Type: text/html; charset=utf-8", "Content-Transfer-Encoding: base64", "", htmlB64
+    ];
+    if(pdf){
+      parts.push(`--${boundary}`, `Content-Type: application/pdf; name="${pdf.fileName}"`, "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${pdf.fileName}"`, "", wrap76(pdf.base64));
+    }
+    parts.push(`--${boundary}--`, "");
+    downloadBlob(new Blob([parts.join("\r\n")], { type: "message/rfc822" }), "Excess Request - " + safeFileBase(email.userName) + ".eml");
+  }
+
+  async function sendViaGraph(email, pdf){
+    const token = await getGraphToken(["Mail.Send"]);
+    const resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: Object.assign(
+          { subject: email.subject, body: { contentType: "HTML", content: email.html },
+            toRecipients: [{ emailAddress: { address: CONFIG.REQUEST_EMAIL } }] },
+          pdf ? { attachments: [{ "@odata.type": "#microsoft.graph.fileAttachment", name: pdf.fileName,
+                                  contentType: "application/pdf", contentBytes: pdf.base64 }] } : {}
+        ),
+        saveToSentItems: true
+      })
+    });
+    if(!resp.ok){
+      const errText = await resp.text().catch(() => "");
+      throw new Error("Outlook rejected the message (" + resp.status + "). " + errText);
+    }
+  }
+
+  let lastEmailDraft = null;
+  let lastPdf = null;
+
+  async function copyHtmlToClipboard(html, text){
+    try{
+      if(navigator.clipboard && window.ClipboardItem){
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" })
+        })]);
+        return true;
+      }
+    }catch(e){ /* fall through to legacy copy */ }
+    try{
+      const box = document.createElement("div");
+      box.contentEditable = "true";
+      box.style.cssText = "position:fixed; left:-9999px; top:0; opacity:0;";
+      box.innerHTML = html;
+      document.body.appendChild(box);
+      const range = document.createRange();
+      range.selectNodeContents(box);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      const ok = document.execCommand("copy");
+      sel.removeAllRanges();
+      document.body.removeChild(box);
+      return ok;
+    }catch(e){ return false; }
+  }
+
+  function openOutlookDraft(email, tableCopied){
+    const body = tableCopied
+      ? "The request table has been copied. Click here in the message body and press Ctrl+V to paste it.\r\n"
+      : email.text;
+    window.location.href = `mailto:${CONFIG.REQUEST_EMAIL}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(body)}`;
+  }
+
+  document.getElementById("copyTableAgainBtn").addEventListener("click", async (e) => {
+    if(!lastEmailDraft) return;
+    const ok = await copyHtmlToClipboard(lastEmailDraft.html, lastEmailDraft.text);
+    e.target.textContent = ok ? "Table copied ✓ — paste with Ctrl+V" : "Couldn't copy the table";
+  });
+  document.getElementById("downloadPdfAgainBtn").addEventListener("click", () => {
+    if(lastPdf) lastPdf.doc.save(lastPdf.fileName);
+  });
+  document.getElementById("downloadEmlBtn").addEventListener("click", () => {
+    if(lastEmailDraft) downloadEmlDraft(lastEmailDraft, lastPdf);
+  });
+  document.getElementById("reopenMailBtn").addEventListener("click", () => {
+    if(lastEmailDraft) openOutlookDraft(lastEmailDraft, true);
+  });
+
+  function showRequestResult(title, detail, fallbackMode){
+    document.getElementById("copyTableAgainBtn").textContent = "Copy request table again";
+    document.getElementById("fallbackButtons").classList.toggle("hidden", !fallbackMode);
+    document.getElementById("successTitle").textContent = title;
+    document.getElementById("successDetail").textContent = detail;
+    document.getElementById("requestFormView").classList.add("hidden");
+    document.getElementById("requestSuccessView").classList.remove("hidden");
+    replayAnim(document.querySelector("#requestSuccessView .success-panel"), "anim-pop");
+  }
+
+  document.getElementById("sendRequestBtn").addEventListener("click", async () => {
+    if(requestInFlight) return;
+    const lines = getRequestLines();
+    const ruCheck = getRequestUser();
+    if(!lines.length || !lines.every(l => l.valid) || !ruCheck.name || !ruCheck.accounts.length) return;
+
+    requestInFlight = true;
+    const btn = document.getElementById("sendRequestBtn");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Preparing Outlook email...';
+    hideStatus(document.getElementById("reqStatusMsg"));
+    const email = buildRequestEmail();
+    const pdf = buildRequestPdf(email);
+    lastPdf = pdf;
+    const colorsText = email.lines.map(l => l.color).join(" and ");
+
+    try{
+      if(isConfigured() && window.msal && !isPreviewMode){
+        initMsal();
+        await sendViaGraph(email, pdf);
+        showRequestResult("Excess request sent successfully ✓",
+          `Requested ${fmtInt(email.totalReq)} units (${colorsText}). The email was sent to ${CONFIG.REQUEST_EMAIL}` +
+          (pdf ? ` with the PDF "${pdf.fileName}" attached.` : `. The PDF could not be created, so no attachment was added.`), false);
+      }else{
+        // Outlook sending via Microsoft 365 isn't configured yet: open an Outlook compose
+        // window with everything pre-filled. The user presses Send in Outlook.
+        lastEmailDraft = email;
+        const copied = await copyHtmlToClipboard(email.html, email.text);
+        if(pdf){ pdf.doc.save(pdf.fileName); await new Promise(r => setTimeout(r, 400)); }
+        openOutlookDraft(email, copied);
+        const steps = [];
+        steps.push(copied ? "Click in the message body and press Ctrl+V to paste the request table."
+                          : "The request details are in the message body as text.");
+        steps.push(pdf ? `Attach the PDF "${pdf.fileName}" that was just saved to your Downloads folder (drag it into the email).`
+                       : "The PDF could not be created in this browser, so there is no attachment.");
+        showRequestResult("Email opened in Outlook ✓",
+          `Outlook should now be open, addressed to ${CONFIG.REQUEST_EMAIL}, for the request: ${colorsText} (${fmtInt(email.totalReq)} units). ${steps.join(" ")} ` +
+          (pdf ? "Or use “Open Outlook draft with PDF attached” below to get the table and the PDF in one draft. " : "") +
+          "Nothing is sent until you press Send.",
+          true);
+        document.getElementById("downloadEmlBtn").classList.toggle("hidden", !pdf);
+        document.getElementById("downloadPdfAgainBtn").classList.toggle("hidden", !pdf);
+      }
+    }catch(err){
+      const isAuthErr = /auth|login|token|popup|consent|AADSTS/i.test(err && err.message || "");
+      showStatus("error", isAuthErr ? "Unable to connect to Outlook." : "Failed to send excess request. Please try again.",
+        isAuthErr ? "Please check your Microsoft 365 connection." : (err.message || String(err)), document.getElementById("reqStatusMsg"));
+    }finally{
+      requestInFlight = false;
+      btn.innerHTML = "Send Request via Outlook";
+      updateRequestSummary();
+    }
+  });
+
+  document.getElementById("backTo4Btn").addEventListener("click", () => goToPage(4));
+  document.getElementById("backToDashFromSuccessBtn").addEventListener("click", () => goToPage(4));
+
+  /* ============== Init ============== */
+  renderStepper();
+  showView("select");
+  (async function boot(){
+    await loadStoredReport();        // data saved by the administrator
+    await initFolderAutoLoad();      // checks the OneDrive folder for a newer dated file
+  })();
+})();
+</script>
+</body>
+</html>
